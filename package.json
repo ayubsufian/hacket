@@ -1,0 +1,8 @@
+{
+  "name": "hack-et-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

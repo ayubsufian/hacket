@@ -1,0 +1,15 @@
+// This is your Prisma schema file
+// Location: hacket/packages/database/prisma/schema.prisma
+
+generator client {
+  provider      = "prisma-client-js"
+  // This output path ensures the client is accessible to both backend and shared-types
+  output        = "../node_modules/.prisma/client"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "linux-musl"]
+}
+
+datasource db {
+  provider = "postgresql"
+  // This points to the DATABASE_URL in your .env file
+  url      = env("DATABASE_URL")
+}
