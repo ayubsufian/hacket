@@ -1,21 +1,48 @@
 {
-  "name": "backend",
+  "name": "hacket-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "server.js",
+  "description": "Centralized Hackathon Management System for Ethiopia",
+  "main": "src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "hackathon",
+    "ethiopia",
+    "management-system",
+    "bilingual",
+    "multi-tenant"
+  ],
+  "author": "Senior Research Project Team",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@prisma/client": "^7.7.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.6",
+    "csv-writer": "^1.6.0",
     "dotenv": "^17.4.2",
+    "ethiopian-date-converter": "^1.0.7",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
-    "morgan": "^1.10.1"
+    "joi": "^17.13.3",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.1",
+    "multer": "^1.4.5-lts.1",
+    "pdfkit": "^0.15.1",
+    "redis": "^4.7.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7",
+    "prisma": "^7.7.0"
+  },
+  "prisma": {
+    "seed": "node src/config/seed.js"
   }
 }

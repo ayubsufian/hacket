@@ -1,0 +1,18 @@
+{
+  "nav": {
+    "dashboard": "ዳሽቦርድ",
+    "discovery": "ማግኘት ማእከል",
+    "events": "የእኔ ኩነቶች",
+    "leaderboard": "የመሪዎች ሰሌዳ"
+  },
+  "labels": {
+    "participant": "ተሳታፊ",
+    "mode_enabled": "AMHARIC MODE ENABLED",
+    "localized_modules": "LOCALIZED MODULES",
+    "search_placeholder": "ጥናት ማእከል"
+  },
+  "content": {
+    "hero_title": "በሀገር ውስጥ እና በዓለም አቀፍ አቀፍ የፈጠራ ውድድሮችን በቀላሉ ያግኙ።",
+    "hero_desc": "የHackET ማግኘት ማእከል አማርኛ ቋንቋ እንዲደግፍ በመደረጉ በግልዎ የተስተካከሉ ኩነቶችን ያሳያል።"
+  }
+}
