@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import Head from 'next/head';
 import { ParticipantLayout } from '@/layouts/ParticipantLayout';
 import {
+  ArrowRight,
+  BadgeCheck,
   Github,
   Linkedin,
   MapPin,
@@ -16,6 +19,12 @@ import {
   Mail,
   Phone,
   Briefcase,
+  ExternalLink,
+  Copy,
+  Target,
+  ShieldCheck,
+  Clock3,
+  Rocket,
 } from 'lucide-react';
 import { Button } from '@/components/shared/Button';
 
@@ -61,6 +70,8 @@ interface HackathonStat {
   teamsJoined: number;
 }
 
+type ProfileTab = 'overview' | 'teams' | 'awards';
+
 const mockUser: UserProfile = {
   firstName: 'Dawit',
   lastName: 'Mekonnen',
@@ -84,6 +95,54 @@ const mockStats: HackathonStat = {
   won: 3,
   teamsJoined: 5,
 };
+
+const recentActivity = [
+  {
+    action: 'Joined team',
+    target: 'Code Warriors',
+    time: '2 days ago',
+    type: 'team',
+  },
+  {
+    action: 'Registered for',
+    target: 'AI For Good Safari',
+    time: '1 week ago',
+    type: 'event',
+  },
+  {
+    action: 'Earned certificate',
+    target: 'First Place Winner',
+    time: '2 weeks ago',
+    type: 'award',
+  },
+  {
+    action: 'Submitted project',
+    target: 'Green Agri-Tech Solution',
+    time: '1 month ago',
+    type: 'project',
+  },
+];
+
+const profileHighlights = [
+  {
+    label: 'Profile completion',
+    value: '92%',
+    detail: 'Great for team matching and mentor visibility.',
+    icon: BadgeCheck,
+  },
+  {
+    label: 'Response time',
+    value: '< 2 hrs',
+    detail: 'Actively engages with organizers and teammates.',
+    icon: Clock3,
+  },
+  {
+    label: 'Team readiness',
+    value: 'Open',
+    detail: 'Available for new hackathon collaborations.',
+    icon: Rocket,
+  },
+];
 
 const mockTeams: Team[] = [
   {
@@ -140,14 +199,14 @@ const mockCertificates: Certificate[] = [
 ];
 
 const ProfileHeader: React.FC<{ user: UserProfile }> = ({ user }) => (
-  <div className="bg-slate-900/30 border border-slate-800/60 rounded-3xl p-8 relative overflow-hidden">
+  <div className="relative overflow-hidden rounded-[2rem] border border-emerald-200/30 bg-gradient-to-br from-white via-emerald-50 to-sky-50 p-6 text-slate-900 shadow-2xl shadow-emerald-950/10 lg:p-8">
     {/* Background decoration */}
-    <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+    <div className="absolute top-0 right-0 h-96 w-96 rounded-full bg-emerald-300/20 blur-3xl -translate-y-1/2 translate-x-1/2" />
     
     <div className="relative flex gap-8">
       {/* Avatar */}
       <div className="relative">
-        <div className="w-32 h-32 rounded-2xl bg-slate-800 overflow-hidden border-2 border-slate-700 shadow-xl">
+        <div className="h-32 w-32 overflow-hidden rounded-[1.5rem] border-2 border-white shadow-xl ring-1 ring-slate-200 lg:h-36 lg:w-36">
           <img
             src={user.avatarUrl}
             alt={`${user.firstName} ${user.lastName}`}
@@ -155,7 +214,7 @@ const ProfileHeader: React.FC<{ user: UserProfile }> = ({ user }) => (
           />
         </div>
         {user.isSeekingTeam && (
-          <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full border-2 border-slate-900">
+          <div className="absolute -bottom-2 -right-2 rounded-full border-2 border-white bg-emerald-500 px-3 py-1 text-[10px] font-bold text-white shadow-lg">
             Open to Team
           </div>
         )}
@@ -163,55 +222,60 @@ const ProfileHeader: React.FC<{ user: UserProfile }> = ({ user }) => (
 
       {/* Info */}
       <div className="flex-1">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-3xl font-black text-white tracking-tighter mb-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-700">
+              <Sparkles size={14} />
+              Profile overview
+            </div>
+            <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 lg:text-5xl">
               {user.firstName} {user.lastName}
             </h1>
-            <div className="flex items-center gap-4 text-sm text-slate-400 mb-4">
+            <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-600">
               {user.university && (
                 <span className="flex items-center gap-1.5">
-                  <GraduationCap size={14} className="text-blue-400" />
+                  <GraduationCap size={14} className="text-emerald-600" />
                   {user.university}
                   {user.graduationYear && ` • Class of ${user.graduationYear}`}
                 </span>
               )}
               {(user.city || user.region) && (
                 <span className="flex items-center gap-1.5">
-                  <MapPin size={14} className="text-blue-400" />
+                  <MapPin size={14} className="text-emerald-600" />
                   {[user.city, user.region].filter(Boolean).join(', ')}
                 </span>
               )}
             </div>
           </div>
           
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="flex items-center gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="flex items-center gap-2 rounded-full border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
               <Edit3 size={14} />
               Edit Profile
             </Button>
-            <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="flex items-center gap-2 rounded-full border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
               <Share2 size={14} />
               Share
             </Button>
           </div>
         </div>
 
-        <p className="text-slate-300 leading-relaxed max-w-2xl mb-4">
+        <p className="mt-5 max-w-3xl leading-relaxed text-slate-600">
           {user.bio}
         </p>
 
         {/* Social Links */}
-        <div className="flex items-center gap-3">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           {user.githubUrl && (
             <a
               href={user.githubUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-700/50 transition-all border border-slate-700"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:text-emerald-700"
             >
               <Github size={16} />
               GitHub
+              <ExternalLink size={14} className="text-slate-400" />
             </a>
           )}
           {user.linkedinUrl && (
@@ -219,16 +283,17 @@ const ProfileHeader: React.FC<{ user: UserProfile }> = ({ user }) => (
               href={user.linkedinUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-700/50 transition-all border border-slate-700"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:text-emerald-700"
             >
               <Linkedin size={16} />
               LinkedIn
+              <ExternalLink size={14} className="text-slate-400" />
             </a>
           )}
           {user.phone && (
             <a
               href={`tel:${user.phone}`}
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-700/50 transition-all border border-slate-700"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:text-emerald-700"
             >
               <Phone size={16} />
               {user.phone}
@@ -241,29 +306,40 @@ const ProfileHeader: React.FC<{ user: UserProfile }> = ({ user }) => (
 );
 
 const StatsCard: React.FC<{ stats: HackathonStat }> = ({ stats }) => (
-  <div className="grid grid-cols-4 gap-4">
+  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
     {[
-      { label: 'Hackathons', value: stats.participated, icon: Calendar, color: 'blue' },
-      { label: 'Completed', value: stats.completed, icon: Briefcase, color: 'emerald' },
-      { label: 'Awards Won', value: stats.won, icon: Trophy, color: 'orange' },
-      { label: 'Teams Joined', value: stats.teamsJoined, icon: Users, color: 'purple' },
-    ].map((stat) => (
+      { label: 'Hackathons', value: stats.participated, icon: Calendar, tone: 'sky' },
+      { label: 'Completed', value: stats.completed, icon: Briefcase, tone: 'emerald' },
+      { label: 'Awards Won', value: stats.won, icon: Trophy, tone: 'amber' },
+      { label: 'Teams Joined', value: stats.teamsJoined, icon: Users, tone: 'violet' },
+    ].map((stat) => {
+      const toneClass =
+        stat.tone === 'emerald'
+          ? 'from-emerald-500/15 to-emerald-500/5 text-emerald-300 border-emerald-500/20'
+          : stat.tone === 'sky'
+          ? 'from-sky-500/15 to-sky-500/5 text-sky-300 border-sky-500/20'
+          : stat.tone === 'violet'
+          ? 'from-violet-500/15 to-violet-500/5 text-violet-300 border-violet-500/20'
+          : 'from-amber-500/15 to-amber-500/5 text-amber-300 border-amber-500/20';
+
+      return (
       <div
         key={stat.label}
-        className="bg-slate-900/30 border border-slate-800/60 rounded-2xl p-6 hover:border-slate-700 transition-all group"
+        className={`rounded-[1.5rem] border bg-gradient-to-br p-6 shadow-lg ${toneClass}`}
       >
         <div className="flex items-center justify-between mb-4">
-          <div className={`p-2 bg-${stat.color}-500/10 rounded-lg`}>
-            <stat.icon size={20} className={`text-${stat.color}-400`} />
+          <div className="rounded-2xl border border-current/15 bg-white/5 p-2">
+            <stat.icon size={20} />
           </div>
-          <Sparkles size={14} className="text-slate-600 group-hover:text-slate-400 transition-colors" />
+          <Sparkles size={14} className="text-slate-500" />
         </div>
         <p className="text-3xl font-black text-white mb-1">{stat.value}</p>
-        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+        <p className="text-xs text-slate-400 font-medium uppercase tracking-[0.25em]">
           {stat.label}
         </p>
       </div>
-    ))}
+      );
+    })}
   </div>
 );
 
@@ -271,12 +347,12 @@ const SkillsSection: React.FC<{ skills: string[]; interests: string[] }> = ({
   skills,
   interests,
 }) => (
-  <div className="bg-slate-900/30 border border-slate-800/60 rounded-3xl p-6">
+  <div className="rounded-[2rem] border border-slate-800/60 bg-slate-900/40 p-6 shadow-xl">
     <div className="flex items-center gap-2 mb-6">
-      <div className="p-1.5 bg-blue-500/10 rounded-lg">
-        <Code2 size={16} className="text-blue-400" />
+      <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-2">
+        <Code2 size={16} className="text-sky-300" />
       </div>
-      <h3 className="text-lg font-black text-white tracking-tighter uppercase">
+      <h3 className="text-lg font-black tracking-tighter text-white uppercase">
         Skills & Expertise
       </h3>
     </div>
@@ -290,7 +366,7 @@ const SkillsSection: React.FC<{ skills: string[]; interests: string[] }> = ({
           {skills.map((skill) => (
             <span
               key={skill}
-              className="px-3 py-1.5 bg-blue-600/10 text-blue-400 text-sm font-medium rounded-lg border border-blue-500/20"
+              className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-300"
             >
               {skill}
             </span>
@@ -306,7 +382,7 @@ const SkillsSection: React.FC<{ skills: string[]; interests: string[] }> = ({
           {interests.map((interest) => (
             <span
               key={interest}
-              className="px-3 py-1.5 bg-slate-800/50 text-slate-300 text-sm font-medium rounded-lg border border-slate-700"
+              className="rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm font-medium text-slate-300"
             >
               {interest}
             </span>
@@ -318,13 +394,13 @@ const SkillsSection: React.FC<{ skills: string[]; interests: string[] }> = ({
 );
 
 const TeamsSection: React.FC<{ teams: Team[] }> = ({ teams }) => (
-  <div className="bg-slate-900/30 border border-slate-800/60 rounded-3xl p-6">
+  <div className="rounded-[2rem] border border-slate-800/60 bg-slate-900/40 p-6 shadow-xl">
     <div className="flex items-center justify-between mb-6">
       <div className="flex items-center gap-2">
-        <div className="p-1.5 bg-purple-500/10 rounded-lg">
-          <Users size={16} className="text-purple-400" />
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 p-2">
+          <Users size={16} className="text-violet-300" />
         </div>
-        <h3 className="text-lg font-black text-white tracking-tighter uppercase">
+        <h3 className="text-lg font-black tracking-tighter text-white uppercase">
           My Teams
         </h3>
       </div>
@@ -337,14 +413,14 @@ const TeamsSection: React.FC<{ teams: Team[] }> = ({ teams }) => (
       {teams.map((team) => (
         <div
           key={team.id}
-          className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl border border-slate-700/50 hover:border-slate-600 transition-all group cursor-pointer"
+          className="group flex cursor-pointer items-center justify-between rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4 transition-all hover:border-emerald-500/25"
         >
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-slate-700 rounded-xl flex items-center justify-center text-xl font-bold text-white">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/15 to-sky-500/15 text-xl font-bold text-white ring-1 ring-white/5">
               {team.name.charAt(0)}
             </div>
             <div>
-              <h4 className="text-white font-bold group-hover:text-blue-400 transition-colors">
+              <h4 className="font-bold text-white transition-colors group-hover:text-emerald-300">
                 {team.name}
               </h4>
               <p className="text-sm text-slate-500">{team.hackathonName}</p>
@@ -355,7 +431,7 @@ const TeamsSection: React.FC<{ teams: Team[] }> = ({ teams }) => (
               <span
                 className={`text-xs font-bold px-2 py-1 rounded ${
                   team.role === 'LEADER'
-                    ? 'bg-blue-500/20 text-blue-400'
+                    ? 'bg-emerald-500/20 text-emerald-300'
                     : 'bg-slate-700 text-slate-400'
                 }`}
               >
@@ -386,13 +462,13 @@ const TeamsSection: React.FC<{ teams: Team[] }> = ({ teams }) => (
 const CertificatesSection: React.FC<{ certificates: Certificate[] }> = ({
   certificates,
 }) => (
-  <div className="bg-slate-900/30 border border-slate-800/60 rounded-3xl p-6">
+  <div className="rounded-[2rem] border border-slate-800/60 bg-slate-900/40 p-6 shadow-xl">
     <div className="flex items-center justify-between mb-6">
       <div className="flex items-center gap-2">
-        <div className="p-1.5 bg-orange-500/10 rounded-lg">
-          <Award size={16} className="text-orange-400" />
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-2">
+          <Award size={16} className="text-amber-300" />
         </div>
-        <h3 className="text-lg font-black text-white tracking-tighter uppercase">
+        <h3 className="text-lg font-black tracking-tighter text-white uppercase">
           Certificates & Awards
         </h3>
       </div>
@@ -405,23 +481,23 @@ const CertificatesSection: React.FC<{ certificates: Certificate[] }> = ({
       {certificates.map((cert) => (
         <div
           key={cert.id}
-          className="flex items-center gap-4 p-4 bg-slate-800/30 rounded-xl border border-slate-700/50 hover:border-slate-600 transition-all group cursor-pointer"
+          className="group flex cursor-pointer items-center gap-4 rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4 transition-all hover:border-emerald-500/25"
         >
           <div
             className={`w-14 h-14 rounded-xl flex items-center justify-center ${
               cert.type === 'BADGE'
-                ? 'bg-orange-500/10 border border-orange-500/20'
-                : 'bg-blue-500/10 border border-blue-500/20'
+                ? 'bg-amber-500/10 border border-amber-500/20'
+                : 'bg-sky-500/10 border border-sky-500/20'
             }`}
           >
             {cert.type === 'BADGE' ? (
-              <Trophy size={24} className="text-orange-400" />
+              <Trophy size={24} className="text-amber-300" />
             ) : (
-              <Award size={24} className="text-blue-400" />
+              <Award size={24} className="text-sky-300" />
             )}
           </div>
           <div className="flex-1">
-            <h4 className="text-white font-bold group-hover:text-blue-400 transition-colors">
+            <h4 className="font-bold text-white transition-colors group-hover:text-emerald-300">
               {cert.title}
             </h4>
             <p className="text-sm text-slate-500">{cert.hackathonName}</p>
@@ -437,9 +513,9 @@ const CertificatesSection: React.FC<{ certificates: Certificate[] }> = ({
             <span
               className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded mt-1 inline-block ${
                 cert.awardTier === 'winner'
-                  ? 'bg-yellow-500/20 text-yellow-400'
+                  ? 'bg-yellow-500/20 text-yellow-300'
                   : cert.awardTier === 'innovation'
-                  ? 'bg-purple-500/20 text-purple-400'
+                  ? 'bg-violet-500/20 text-violet-300'
                   : 'bg-slate-700 text-slate-400'
               }`}
             >
@@ -453,52 +529,27 @@ const CertificatesSection: React.FC<{ certificates: Certificate[] }> = ({
 );
 
 const ActivitySection: React.FC = () => (
-  <div className="bg-slate-900/30 border border-slate-800/60 rounded-3xl p-6">
+  <div className="rounded-[2rem] border border-slate-800/60 bg-slate-900/40 p-6 shadow-xl">
     <div className="flex items-center gap-2 mb-6">
-      <div className="p-1.5 bg-emerald-500/10 rounded-lg">
-        <Sparkles size={16} className="text-emerald-400" />
+      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2">
+        <Sparkles size={16} className="text-emerald-300" />
       </div>
-      <h3 className="text-lg font-black text-white tracking-tighter uppercase">
+      <h3 className="text-lg font-black tracking-tighter text-white uppercase">
         Recent Activity
       </h3>
     </div>
 
     <div className="space-y-4">
-      {[
-        {
-          action: 'Joined team',
-          target: 'Code Warriors',
-          time: '2 days ago',
-          type: 'team',
-        },
-        {
-          action: 'Registered for',
-          target: 'AI For Good Safari',
-          time: '1 week ago',
-          type: 'event',
-        },
-        {
-          action: 'Earned certificate',
-          target: 'First Place Winner',
-          time: '2 weeks ago',
-          type: 'award',
-        },
-        {
-          action: 'Submitted project',
-          target: 'Green Agri-Tech Solution',
-          time: '1 month ago',
-          type: 'project',
-        },
-      ].map((activity, i) => (
+      {recentActivity.map((activity, i) => (
         <div key={i} className="flex items-start gap-3">
           <div
             className={`w-2 h-2 rounded-full mt-2 ${
               activity.type === 'team'
-                ? 'bg-purple-500'
+                ? 'bg-violet-500'
                 : activity.type === 'event'
-                ? 'bg-blue-500'
+                ? 'bg-sky-500'
                 : activity.type === 'award'
-                ? 'bg-orange-500'
+                ? 'bg-amber-500'
                 : 'bg-emerald-500'
             }`}
           />
@@ -516,33 +567,144 @@ const ActivitySection: React.FC = () => (
 );
 
 export default function UserProfilePage() {
+  const [tab, setTab] = useState<ProfileTab>('overview');
+
+  const highlights = useMemo(() => profileHighlights, []);
+
   return (
     <ParticipantLayout>
+      <Head>
+        <title>HackET | User Profile</title>
+      </Head>
+
       <div className="space-y-6">
-        {/* Profile Header */}
         <ProfileHeader user={mockUser} />
 
-        {/* Stats Overview */}
         <StatsCard stats={mockStats} />
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-12 gap-6">
-          {/* Left Column - Skills & Activity */}
-          <div className="col-span-4 space-y-6">
+        <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <div className="space-y-6">
+            <div className="rounded-[2rem] border border-slate-800/60 bg-slate-900/40 p-6 shadow-xl">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Account status</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-tight text-white">Profile controls</h2>
+                </div>
+                <Button variant="outline" size="sm" className="rounded-full border-slate-700 bg-slate-950/30 text-slate-200 hover:bg-slate-800">
+                  <Copy size={14} className="mr-2" />
+                  Copy link
+                </Button>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                {highlights.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.label} className="rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4">
+                      <Icon size={18} className="text-emerald-300" />
+                      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">{item.label}</p>
+                      <p className="mt-2 text-xl font-black text-white">{item.value}</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-400">{item.detail}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Button variant="primary" size="sm" className="rounded-full bg-emerald-500 px-5 text-white hover:bg-emerald-600">
+                  Edit information
+                  <ArrowRight size={14} className="ml-2" />
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-full border-slate-700 bg-slate-950/30 text-slate-200 hover:bg-slate-800">
+                  <Mail size={14} className="mr-2" />
+                  Contact support
+                </Button>
+              </div>
+            </div>
+
             <SkillsSection skills={mockUser.skills} interests={mockUser.interests} />
-            <ActivitySection />
           </div>
 
-          {/* Middle Column - Teams */}
-          <div className="col-span-4">
-            <TeamsSection teams={mockTeams} />
-          </div>
+          <div className="space-y-6">
+            <div className="rounded-[2rem] border border-slate-800/60 bg-slate-900/40 p-6 shadow-xl">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Sections</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-tight text-white">Profile tabs</h2>
+                </div>
+                <div className="flex rounded-full border border-slate-800 bg-slate-950/50 p-1 text-xs font-semibold">
+                  {(['overview', 'teams', 'awards'] as ProfileTab[]).map((item) => (
+                    <button
+                      key={item}
+                      onClick={() => setTab(item)}
+                      className={`rounded-full px-4 py-2 capitalize transition ${
+                        tab === item
+                          ? 'bg-emerald-500 text-white'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          {/* Right Column - Certificates */}
-          <div className="col-span-4">
-            <CertificatesSection certificates={mockCertificates} />
+              <div className="mt-6 space-y-4">
+                {tab === 'overview' && (
+                  <>
+                    <ActivitySection />
+                    <div className="rounded-[1.5rem] border border-slate-800/70 bg-slate-950/40 p-5">
+                      <div className="flex items-center gap-2">
+                        <Target size={16} className="text-emerald-300" />
+                        <h3 className="font-black text-white">Current focus</h3>
+                      </div>
+                      <p className="mt-3 text-sm leading-7 text-slate-400">
+                        Improving product design, team leadership, and shipping polished hackathon submissions with React and Node.js.
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {tab === 'teams' && <TeamsSection teams={mockTeams} />}
+
+                {tab === 'awards' && <CertificatesSection certificates={mockCertificates} />}
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-800/60 bg-slate-900/40 p-6 shadow-xl">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-2">
+                  <ShieldCheck size={16} className="text-sky-300" />
+                </div>
+                <h3 className="text-lg font-black tracking-tighter text-white uppercase">
+                  Contact & links
+                </h3>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Email</p>
+                    <p className="mt-1 font-semibold text-white">dawit@example.com</p>
+                  </div>
+                  <Mail size={16} className="text-emerald-300" />
+                </div>
+                <div className="flex items-center justify-between rounded-2xl border border-slate-800/70 bg-slate-950/40 p-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Portfolio</p>
+                    <p className="mt-1 font-semibold text-white">Portfolio-ready</p>
+                  </div>
+                  <ExternalLink size={16} className="text-emerald-300" />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-2">
+          <TeamsSection teams={mockTeams} />
+          <CertificatesSection certificates={mockCertificates} />
+        </section>
       </div>
     </ParticipantLayout>
   );
