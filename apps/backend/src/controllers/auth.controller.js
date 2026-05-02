@@ -6,7 +6,10 @@ const authService = require('../services/auth/auth.service');
 const catchAsync = require('../utils/catchAsync');
 
 exports.register = catchAsync(async (req, res) => {
-  const { email, password, role, firstName, lastName } = req.body;
+  const {
+    email, password, role, firstName, lastName,
+    organizationName, representativeName, verificationDocUrl,
+  } = req.body;
 
   const result = await authService.register(
     {
@@ -15,6 +18,9 @@ exports.register = catchAsync(async (req, res) => {
       role,
       firstName,
       lastName,
+      organizationName,
+      representativeName,
+      verificationDocUrl,
     },
     {
       userAgent: req.headers['user-agent'],
@@ -71,5 +77,27 @@ exports.getMe = catchAsync(async (req, res) => {
   res.status(200).json({
     success: true,
     data: { user },
+  });
+});
+
+exports.forgotPassword = catchAsync(async (req, res) => {
+  const { email } = req.body;
+
+  const result = await authService.forgotPassword(email);
+
+  res.status(200).json({
+    success: true,
+    ...result,
+  });
+});
+
+exports.resetPassword = catchAsync(async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  const result = await authService.resetPassword(token, newPassword);
+
+  res.status(200).json({
+    success: true,
+    ...result,
   });
 });

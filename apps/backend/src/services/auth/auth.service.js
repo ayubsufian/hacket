@@ -4,6 +4,7 @@
 // =============================================================================
 
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const prisma = require('../../config/database');
 const { setSession, destroySession } = require('../../config/redis');
@@ -23,43 +24,91 @@ class AuthService {
    * @param {string} [data.role='PARTICIPANT']
    * @param {string} data.firstName
    * @param {string} data.lastName
+   * @param {string} [data.organizationName]       - Required for ORGANIZER (UC0001)
+   * @param {string} [data.representativeName]      - Required for ORGANIZER (UC0001)
+   * @param {string} [data.verificationDocUrl]      - Required for ORGANIZER (UC0001)
    * @returns {{ user, token }}
    */
   async register(
-    { email, password, role = 'PARTICIPANT', firstName, lastName },
+    {
+      email, password, role = 'PARTICIPANT', firstName, lastName,
+      organizationName, representativeName, verificationDocUrl,
+    },
     meta = {},
   ) {
-    // Check if user already exists
+    // Check if user already exists (AF1: Email Already Registered)
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      throw new AppError('An account with this email already exists.', 409);
+      throw new AppError(
+        'This email is already registered. Please log in or use another email.',
+        409,
+      );
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
-    // Create user + profile in a transaction
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        role,
-        profile: {
-          create: {
-            firstName,
-            lastName,
+    // Determine verification status: Organizers start as PENDING until admin review
+    const isOrganizer = role === 'ORGANIZER';
+    const verificationStatus = isOrganizer ? 'PENDING' : 'UNVERIFIED';
+
+    // Create user + profile (+ organization for organizers) in a transaction
+    const user = await prisma.$transaction(async (tx) => {
+      // 1. Create user with profile
+      const newUser = await tx.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          role,
+          verificationStatus,
+          profile: {
+            create: {
+              firstName,
+              lastName,
+              representativeName: representativeName || null,
+            },
           },
         },
-      },
-      include: {
-        profile: {
-          select: {
-            firstName: true,
-            lastName: true,
-            preferredLocale: true,
+        include: {
+          profile: {
+            select: {
+              firstName: true,
+              lastName: true,
+              preferredLocale: true,
+              representativeName: true,
+            },
           },
         },
-      },
+      });
+
+      // 2. For organizers: create organization with verification doc
+      if (isOrganizer && organizationName) {
+        const slug = organizationName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          + '-' + newUser.id.slice(0, 8);
+
+        const org = await tx.organization.create({
+          data: {
+            name: organizationName,
+            slug,
+            verificationDocUrl: verificationDocUrl || null,
+            contactEmail: email,
+          },
+        });
+
+        // Link the user as the organization admin
+        await tx.organizationMember.create({
+          data: {
+            organizationId: org.id,
+            userId: newUser.id,
+            role: 'ADMIN',
+          },
+        });
+      }
+
+      return newUser;
     });
 
     // Generate JWT
@@ -89,7 +138,7 @@ class AuthService {
       action: 'CREATE',
       entity: 'user',
       entityId: user.id,
-      details: { email, role },
+      details: { email, role, verificationStatus },
     });
 
     return {
@@ -116,14 +165,25 @@ class AuthService {
       },
     });
 
-    if (!user || !user.isActive) {
-      throw new AppError('Invalid email or password.', 401);
+    // AF2: Account Not Found
+    if (!user) {
+      throw new AppError(
+        'Account not found. Please create an account.',
+        404,
+      );
     }
 
-    // Verify password
+    if (!user.isActive) {
+      throw new AppError(
+        'This account has been suspended. Please contact support.',
+        403,
+      );
+    }
+
+    // AF1: Incorrect Credentials
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
-      throw new AppError('Invalid email or password.', 401);
+      throw new AppError('Incorrect credentials. Please try again.', 401);
     }
 
     // Generate JWT
@@ -212,6 +272,141 @@ class AuthService {
     }
 
     return this._sanitizeUser(user);
+  }
+
+  // ─── Forgot / Reset Password (UC0002 AF3) ────────────────────────────
+
+  /**
+   * Request a password reset.
+   * Generates a secure token, stores it in the DB, and returns it.
+   * In production, this token would be emailed to the user.
+   * @param {string} email
+   * @returns {{ message: string, resetToken?: string }}
+   */
+  async forgotPassword(email) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new AppError(
+        'Account not found. Please create an account.',
+        404,
+      );
+    }
+
+    // Delete any existing reset tokens for this user
+    await prisma.passwordResetToken.deleteMany({
+      where: { userId: user.id },
+    });
+
+    // Generate a secure random token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(rawToken)
+      .digest('hex');
+
+    // Store hashed token with 1-hour expiry
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        token: hashedToken,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      },
+    });
+
+    // Audit log
+    eventBus.emit('audit:log', {
+      actorId: user.id,
+      action: 'UPDATE',
+      entity: 'user',
+      entityId: user.id,
+      details: { action: 'password_reset_requested' },
+    });
+
+    // In production, send email with reset link containing rawToken.
+    // For development, return the token in the response.
+    const result = {
+      message:
+        'If an account with that email exists, a password reset link has been sent.',
+    };
+
+    if (process.env.NODE_ENV !== 'production') {
+      result.resetToken = rawToken;
+      result.note =
+        'This token is only returned in development mode. In production it would be emailed.';
+    }
+
+    return result;
+  }
+
+  /**
+   * Reset the password using a valid reset token.
+   * @param {string} token  - The raw (unhashed) token from the reset link
+   * @param {string} newPassword
+   * @returns {{ message: string }}
+   */
+  async resetPassword(token, newPassword) {
+    // Hash the incoming token to compare with stored hash
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    const resetRecord = await prisma.passwordResetToken.findUnique({
+      where: { token: hashedToken },
+    });
+
+    if (!resetRecord) {
+      throw new AppError(
+        'Invalid or expired reset token. Please request a new one.',
+        400,
+      );
+    }
+
+    if (new Date(resetRecord.expiresAt) <= new Date()) {
+      // Clean up expired token
+      await prisma.passwordResetToken.delete({
+        where: { id: resetRecord.id },
+      });
+      throw new AppError(
+        'Reset token has expired. Please request a new one.',
+        400,
+      );
+    }
+
+    // Hash new password and update
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
+
+    await prisma.$transaction(async (tx) => {
+      // Update password
+      await tx.user.update({
+        where: { id: resetRecord.userId },
+        data: { password: hashedPassword },
+      });
+
+      // Delete the used reset token
+      await tx.passwordResetToken.delete({
+        where: { id: resetRecord.id },
+      });
+
+      // Invalidate all existing sessions for security
+      await tx.session.deleteMany({
+        where: { userId: resetRecord.userId },
+      });
+    });
+
+    // Destroy Redis session
+    await destroySession(resetRecord.userId);
+
+    // Audit log
+    eventBus.emit('audit:log', {
+      actorId: resetRecord.userId,
+      action: 'UPDATE',
+      entity: 'user',
+      entityId: resetRecord.userId,
+      details: { action: 'password_reset_completed' },
+    });
+
+    return { message: 'Password has been reset successfully. Please log in with your new password.' };
   }
 
   // ─── Private Helpers ──────────────────────────────────────────────────
