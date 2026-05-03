@@ -27,8 +27,25 @@ exports.getById = catchAsync(async (req, res) => {
 exports.list = catchAsync(async (req, res) => {
   const { status, region, theme, search, page, limit } = req.query;
 
+  let statusArray = ['PUBLISHED', 'REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING'];
+
+  if (status) {
+    // Support both comma-separated strings and arrays
+    const parsedStatus = Array.isArray(status) ? status : status.split(',');
+    
+    // Filter out 'DRAFT' and map to uppercase
+    statusArray = parsedStatus
+      .filter((s) => s && s.trim().toUpperCase() !== 'DRAFT')
+      .map((s) => s.trim().toUpperCase());
+      
+    // Fallback if they only requested DRAFT or provided an invalid array
+    if (statusArray.length === 0) {
+      statusArray = ['PUBLISHED', 'REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING'];
+    }
+  }
+
   const result = await eventsService.list({
-    status,
+    status: statusArray,
     region,
     theme,
     search,

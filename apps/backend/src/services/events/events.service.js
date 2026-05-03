@@ -87,7 +87,9 @@ class EventsService {
   async list({ status, region, theme, search, page = 1, limit = 12 } = {}) {
     const where = {};
 
-    if (status) where.status = status;
+    if (status) {
+      where.status = Array.isArray(status) ? { in: status } : status;
+    }
     if (region) where.region = { equals: region, mode: 'insensitive' };
     if (theme) {
       where.tags = { some: { tag: { equals: theme, mode: 'insensitive' } } };
