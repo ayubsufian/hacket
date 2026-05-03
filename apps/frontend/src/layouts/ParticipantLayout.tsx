@@ -31,24 +31,31 @@ export const ParticipantLayout: React.FC<LayoutProps> = ({ children }) => {
     router.pathname === href || router.asPath === href;
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-300 font-sans lg:flex">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-slate-200 font-sans lg:flex">
       {/* --- Sidebar --- */}
-      <aside className="hidden lg:flex w-72 border-r border-slate-800/50 flex-col p-6 space-y-8 bg-[#020617]/80 backdrop-blur-xl sticky top-0 h-screen">
+      <aside className="hidden lg:flex w-72 border-r border-slate-800/40 flex-col p-6 space-y-6 bg-white/3 backdrop-blur-sm sticky top-4 h-[calc(100vh-32px)] rounded-2xl ml-6">
         <div className="flex items-center gap-3 px-2">
-          <div className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center border border-emerald-300/40 shadow-[0_0_30px_rgba(16,185,129,0.18)]">
-            <span className="text-white font-black italic">H</span>
+          <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center border border-emerald-300/30 shadow-md">
+            <span className="text-white font-extrabold">H</span>
           </div>
           <div>
-            <span className="text-xl font-black tracking-tighter text-white block leading-none">
+            <span className="text-lg font-bold tracking-tight text-white block leading-none">
               HackET
             </span>
-            <span className="text-[10px] uppercase tracking-[0.35em] text-slate-500">
-              Participant space
+            <span className="text-[11px] uppercase tracking-wide text-slate-300">
+              Participant
             </span>
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1">
+        <div className="mt-3">
+          <input
+            placeholder="Search events, teams..."
+            className="w-full bg-white/4 placeholder:text-slate-400 text-sm rounded-xl py-2 px-3 border border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+          />
+        </div>
+
+        <nav className="flex-1 mt-4 space-y-2">
           {navItems.map((item) => {
             const active = isActive(item.href);
             const Icon = item.icon;
@@ -57,22 +64,24 @@ export const ParticipantLayout: React.FC<LayoutProps> = ({ children }) => {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all border ${
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
                   active
-                    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25 shadow-[0_0_15px_rgba(16,185,129,0.08)]'
-                    : 'border-transparent text-slate-400 hover:text-white hover:bg-slate-800/50 hover:border-slate-700/70'
+                    ? 'bg-emerald-500/10 text-emerald-200 ring-1 ring-emerald-500/20'
+                    : 'text-slate-300 hover:bg-white/5'
                 }`}
               >
-                <Icon size={18} />
-                {item.label}
+                <span className="w-9 h-9 rounded-lg flex items-center justify-center bg-white/3 text-slate-200">
+                  <Icon size={16} />
+                </span>
+                <span className="truncate">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
         {/* Profile Section */}
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-3 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-slate-700 overflow-hidden border border-slate-600">
+        <div className="mt-3 bg-white/3 border border-white/5 rounded-2xl p-3 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-400 overflow-hidden border border-emerald-600/20 flex-shrink-0">
             <img
               src="https://api.dicebear.com/7.x/avataaars/svg?seed=Dawit"
               alt="User avatar"
@@ -80,13 +89,13 @@ export const ParticipantLayout: React.FC<LayoutProps> = ({ children }) => {
             />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white truncate">Dawit M.</p>
-            <p className="text-[10px] font-bold text-emerald-500 tracking-widest uppercase">
-              LVL 4 BUILDER
+            <p className="text-sm font-semibold text-white truncate">Dawit M.</p>
+            <p className="text-[11px] font-medium text-emerald-300 uppercase tracking-wide">
+              LVL 4 • Builder
             </p>
           </div>
-          <div className="p-1.5 bg-emerald-500/10 rounded-md border border-emerald-500/20">
-            <Bookmark size={14} className="text-emerald-500" />
+          <div>
+            <Button size="sm" className="bg-emerald-500 text-white px-3 py-1 rounded-md">Profile</Button>
           </div>
         </div>
       </aside>
@@ -94,32 +103,39 @@ export const ParticipantLayout: React.FC<LayoutProps> = ({ children }) => {
       {/* --- Main Content --- */}
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Top Header */}
-        <header className="border-b border-slate-800/60 bg-[#020617]/80 backdrop-blur-xl px-5 py-4 lg:px-10 lg:py-6 sticky top-0 z-20">
-          <div className="flex items-start justify-between gap-4">
+        <header className="px-5 py-4 lg:px-10 lg:py-6 sticky top-4 z-30">
+          <div className="flex items-center justify-between gap-6">
             <div>
-              <h1 className="text-xl lg:text-2xl font-black text-white tracking-tighter uppercase">
+              <h1 className="text-lg lg:text-2xl font-extrabold text-white tracking-tight">
                 Participant Workspace
               </h1>
-              <p className="text-xs text-slate-500 font-medium max-w-2xl">
-                Personalized discovery, deadlines, saved events, and profile tools in one place.
+              <p className="text-xs text-slate-300 max-w-2xl mt-1">
+                Discover events, manage deadlines, and update your profile.
               </p>
             </div>
-            <div className="hidden sm:flex items-center gap-3">
-              <div className="flex bg-slate-900 border border-slate-800 p-1 rounded-xl">
-                <button className="p-1.5 text-slate-500 hover:text-white transition-colors" aria-label="Theme">
-                  <Moon size={16} />
-                </button>
-                <button className="p-1.5 text-slate-500 hover:text-white border-l border-slate-800 ml-1 pl-2 transition-colors" aria-label="Language">
-                  <Globe size={16} />
-                </button>
+
+            <div className="flex-1 max-w-xl">
+              <div className="relative">
+                <input
+                  placeholder="Search events, teammates, projects..."
+                  className="w-full bg-white/5 placeholder:text-slate-400 text-sm rounded-full py-2.5 pl-4 pr-10 border border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-400/25"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300">
+                  <Search size={16} />
+                </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-emerald-500/10 border-emerald-500/30 text-emerald-300 font-bold text-[10px] uppercase tracking-[0.2em]"
-              >
-                Participant
-              </Button>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-3">
+              <button className="p-2 rounded-full bg-white/3 text-slate-200 hover:bg-white/5">
+                <Moon size={16} />
+              </button>
+              <button className="p-2 rounded-full bg-white/3 text-slate-200 hover:bg-white/5">
+                <Globe size={16} />
+              </button>
+              <div className="flex items-center gap-3">
+                <Button size="sm" className="bg-emerald-500 text-white px-3 py-1 rounded-md">Create</Button>
+              </div>
             </div>
           </div>
 
@@ -131,10 +147,10 @@ export const ParticipantLayout: React.FC<LayoutProps> = ({ children }) => {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold whitespace-nowrap border transition-all ${
+                  className={`flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition ${
                     active
-                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25'
-                      : 'bg-slate-900/60 text-slate-400 border-slate-800'
+                      ? 'bg-emerald-500/12 text-emerald-200'
+                      : 'bg-white/3 text-slate-300'
                   }`}
                 >
                   <Icon size={14} />
