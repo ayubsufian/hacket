@@ -4,6 +4,26 @@
 
 const eventsService = require('../services/events/events.service');
 const catchAsync = require('../utils/catchAsync');
+const { generateIcs } = require('../utils/calendar');
+const AppError = require('../utils/AppError');
+
+exports.getCalendar = catchAsync(async (req, res) => {
+  const hackathon = await eventsService.getById(req.params.id);
+
+  if (!hackathon) {
+    throw new AppError('Hackathon not found.', 404);
+  }
+
+  const icsContent = generateIcs(hackathon);
+
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="hackathon-${hackathon.id}.ics"`
+  );
+
+  res.status(200).send(icsContent);
+});
 
 exports.create = catchAsync(async (req, res) => {
   const hackathon = await eventsService.create(req.user.id, req.body);
