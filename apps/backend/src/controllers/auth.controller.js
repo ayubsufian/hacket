@@ -101,3 +101,12 @@ exports.resetPassword = catchAsync(async (req, res) => {
     ...result,
   });
 });
+
+exports.extendSession = catchAsync(async (req, res) => {
+  // The 'authenticate' middleware has already handled extending the Redis TTL
+  // and updating 'lastActiveAt' in the database.
+  res.status(200).json({
+    success: true,
+    message: 'Session extended successfully.',
+  });
+});

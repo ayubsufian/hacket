@@ -20,6 +20,9 @@ const AppError = require('./utils/AppError');
 
 // ── Routes ──────────────────────────────────────────────────────────────
 const authRoutes = require('./routes/auth.routes');
+const profileRoutes = require('./routes/profile.routes');
+const organizationRoutes = require('./routes/organization.routes');
+const bookmarkRoutes = require('./routes/bookmark.routes');
 const eventsRoutes = require('./routes/events.routes');
 const teamsRoutes = require('./routes/teams.routes');
 const submissionsRoutes = require('./routes/submissions.routes');
@@ -75,6 +78,9 @@ app.get('/health', (req, res) => {
 
 // ── API Routes ──────────────────────────────────────────────────────────
 app.use(`${API_PREFIX}/auth`, authRoutes);
+app.use(`${API_PREFIX}/profile`, profileRoutes);
+app.use(`${API_PREFIX}/organizations`, organizationRoutes);
+app.use(`${API_PREFIX}/bookmarks`, bookmarkRoutes);
 app.use(`${API_PREFIX}/events`, eventsRoutes);
 app.use(`${API_PREFIX}/teams`, teamsRoutes);
 app.use(`${API_PREFIX}/submissions`, submissionsRoutes);

@@ -51,10 +51,25 @@ const authenticate = async (req, res, next) => {
       if (!dbSession || new Date(dbSession.expiresAt) <= new Date()) {
         return next(
           new AppError(
-            'Session expired due to inactivity. Please log in again.',
+            'Session expired. Please log in again.',
             401,
           ),
         );
+      }
+
+      // Check inactivity for non-participants (UC0004)
+      if (decoded.role !== 'PARTICIPANT') {
+        const inactiveMs = new Date() - new Date(dbSession.lastActiveAt);
+        const inactiveMinutes = inactiveMs / 1000 / 60;
+        
+        if (inactiveMinutes > 30) {
+          return next(
+            new AppError(
+              'Session expired due to inactivity. Please log in again.',
+              401,
+            ),
+          );
+        }
       }
       // Restore Redis session for sliding window
       await setSession(decoded.id, {

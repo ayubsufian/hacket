@@ -8,6 +8,7 @@ const { createClient } = require('redis');
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const SESSION_TTL_SECONDS = 30 * 60; // 30-minute inactivity timeout
+const PARTICIPANT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days for Participant role
 
 const redisClient = createClient({
   url: REDIS_URL,
@@ -57,7 +58,8 @@ async function disconnectRedis() {
  */
 async function setSession(userId, sessionData) {
   const key = `session:${userId}`;
-  await redisClient.set(key, JSON.stringify(sessionData), { EX: SESSION_TTL_SECONDS });
+  const ttl = sessionData.role === 'PARTICIPANT' ? PARTICIPANT_TTL_SECONDS : SESSION_TTL_SECONDS;
+  await redisClient.set(key, JSON.stringify(sessionData), { EX: ttl });
 }
 
 /**
@@ -71,9 +73,12 @@ async function getSession(userId) {
   const data = await redisClient.get(key);
   if (!data) return null;
 
+  const sessionData = JSON.parse(data);
+  const ttl = sessionData.role === 'PARTICIPANT' ? PARTICIPANT_TTL_SECONDS : SESSION_TTL_SECONDS;
+
   // Refresh TTL on every access (sliding window)
-  await redisClient.expire(key, SESSION_TTL_SECONDS);
-  return JSON.parse(data);
+  await redisClient.expire(key, ttl);
+  return sessionData;
 }
 
 /**
