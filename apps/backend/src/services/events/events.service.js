@@ -6,6 +6,7 @@
 const prisma = require('../../config/database');
 const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
+const { levenshteinDistance } = require('../../utils/levenshtein');
 
 class EventsService {
   /**
@@ -84,16 +85,37 @@ class EventsService {
    * @param {number} [filters.limit=12]
    * @returns {{ data: Array, pagination: object }}
    */
-  async list({ status, region, theme, search, page = 1, limit = 12 } = {}) {
+  async list({ status, region, theme, category, schedule, search, page = 1, limit = 12, actorId } = {}) {
     const where = {};
 
     if (status) {
       where.status = Array.isArray(status) ? { in: status } : status;
     }
     if (region) where.region = { equals: region, mode: 'insensitive' };
-    if (theme) {
+    
+    if (theme && !category) {
       where.tags = { some: { tag: { equals: theme, mode: 'insensitive' } } };
+    } else if (category && !theme) {
+      where.tags = { some: { tag: { equals: category, mode: 'insensitive' } } };
+    } else if (theme && category) {
+      where.AND = [
+        { tags: { some: { tag: { equals: theme, mode: 'insensitive' } } } },
+        { tags: { some: { tag: { equals: category, mode: 'insensitive' } } } }
+      ];
     }
+
+    if (schedule) {
+      const now = new Date();
+      if (schedule === 'upcoming') {
+        where.eventStart = { gte: now };
+      } else if (schedule === 'past') {
+        where.eventEnd = { lt: now };
+      } else if (schedule === 'ongoing') {
+        where.eventStart = { lte: now };
+        where.eventEnd = { gte: now };
+      }
+    }
+
     if (search) {
       where.OR = [
         { title: { contains: search, mode: 'insensitive' } },
@@ -118,6 +140,52 @@ class EventsService {
       prisma.hackathon.count({ where }),
     ]);
 
+    // Search Logging
+    if (search) {
+      await prisma.searchLog.create({
+        data: {
+          query: search,
+          actorId: actorId || null,
+          resultCount: total,
+        }
+      }).catch(err => console.error('Failed to log search:', err));
+    }
+
+    let suggestion = null;
+
+    // AF2: Auto-correction
+    if (search && total === 0) {
+      const candidates = await prisma.hackathon.findMany({
+        where: { status: { in: ['PUBLISHED', 'REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING'] } },
+        select: { title: true, region: true },
+        take: 100,
+      });
+
+      let bestMatch = null;
+      let lowestDistance = Infinity;
+
+      for (const candidate of candidates) {
+        const titleDist = levenshteinDistance(search.toLowerCase(), candidate.title.toLowerCase());
+        if (titleDist < lowestDistance) {
+          lowestDistance = titleDist;
+          bestMatch = candidate.title;
+        }
+        
+        if (candidate.region) {
+          const regionDist = levenshteinDistance(search.toLowerCase(), candidate.region.toLowerCase());
+          if (regionDist < lowestDistance) {
+            lowestDistance = regionDist;
+            bestMatch = candidate.region;
+          }
+        }
+      }
+
+      // If distance is small enough (typo threshold)
+      if (bestMatch && lowestDistance <= 3) {
+        suggestion = bestMatch;
+      }
+    }
+
     return {
       data: data.map((h) => ({
         ...h,
@@ -129,6 +197,7 @@ class EventsService {
         total,
         totalPages: Math.ceil(total / limit),
       },
+      suggestion,
     };
   }
 

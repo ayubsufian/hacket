@@ -25,7 +25,7 @@ exports.getById = catchAsync(async (req, res) => {
 });
 
 exports.list = catchAsync(async (req, res) => {
-  const { status, region, theme, search, page, limit } = req.query;
+  const { status, region, theme, category, schedule, search, page, limit } = req.query;
 
   let statusArray = ['PUBLISHED', 'REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING'];
 
@@ -48,16 +48,25 @@ exports.list = catchAsync(async (req, res) => {
     status: statusArray,
     region,
     theme,
+    category,
+    schedule,
     search,
     page: parseInt(page) || 1,
     limit: parseInt(limit) || 12,
+    actorId: req.user ? req.user.id : null,
   });
 
-  res.status(200).json({
+  const responsePayload = {
     success: true,
     data: result.data,
     pagination: result.pagination,
-  });
+  };
+
+  if (result.suggestion) {
+    responsePayload.suggestion = result.suggestion;
+  }
+
+  res.status(200).json(responsePayload);
 });
 
 exports.update = catchAsync(async (req, res) => {
