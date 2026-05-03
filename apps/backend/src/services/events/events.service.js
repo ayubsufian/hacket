@@ -319,11 +319,35 @@ class EventsService {
       }
     }
 
-    // Get user profile for naming
+    // Get user profile for naming & prerequisite validation
     const profile = await prisma.userProfile.findUnique({
       where: { userId },
-      select: { firstName: true, lastName: true },
+      select: { firstName: true, lastName: true, dateOfBirth: true, skills: true },
     });
+
+    // AF3: Pre-requisite validation
+    if (hackathon.prerequisites && profile) {
+      const prereqs = typeof hackathon.prerequisites === 'string' 
+        ? JSON.parse(hackathon.prerequisites) 
+        : hackathon.prerequisites;
+        
+      if (prereqs.minimumAge) {
+        if (!profile.dateOfBirth) {
+          throw new AppError('You do not meet the required criteria to register for this event.', 403);
+        }
+        const age = new Date().getFullYear() - new Date(profile.dateOfBirth).getFullYear();
+        if (age < prereqs.minimumAge) {
+          throw new AppError('You do not meet the required criteria to register for this event.', 403);
+        }
+      }
+      
+      if (prereqs.requiredSkills && prereqs.requiredSkills.length > 0) {
+        const hasSkill = prereqs.requiredSkills.some(skill => profile.skills.includes(skill));
+        if (!hasSkill) {
+          throw new AppError('You do not meet the required criteria to register for this event.', 403);
+        }
+      }
+    }
 
     const teamName = profile
       ? `${profile.firstName}'s Team`

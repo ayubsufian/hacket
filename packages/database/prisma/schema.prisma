@@ -329,6 +329,7 @@ model Hackathon {
   rulesAm             String?            @map("rules_am") @db.Text
   prizes              Json?
   scoringRules        Json?              @map("scoring_rules")
+  prerequisites       Json?
   region              String?            @db.VarChar(100)
   venue               String?
   isVirtual           Boolean            @default(false) @map("is_virtual")
