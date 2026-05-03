@@ -64,6 +64,7 @@ const updateSchema = createSchema.fork(
 // Public discovery
 router.get('/', eventsController.list);
 router.get('/:id', eventsController.getById);
+router.get('/:id/calendar', eventsController.getCalendar);
 
 // Authenticated
 router.post(
