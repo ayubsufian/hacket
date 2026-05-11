@@ -2,9 +2,9 @@
 // HackET — Profile Service
 // =============================================================================
 
-const prisma = require('../config/database');
-const AppError = require('../utils/AppError');
-const eventBus = require('../utils/eventBus');
+const prisma = require('../../config/database');
+const AppError = require('../../utils/AppError');
+const eventBus = require('../../utils/eventBus');
 
 class ProfileService {
   /**

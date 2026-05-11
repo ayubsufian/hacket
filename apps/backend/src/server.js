@@ -30,10 +30,21 @@ const judgingRoutes = require('./routes/judging.routes');
 const matchingRoutes = require('./routes/matching.routes');
 const notificationsRoutes = require('./routes/notifications.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
+const mentorshipRoutes = require('./routes/mentorship.routes');
+const discussionsRoutes = require('./routes/discussions.routes');
+const feedbacksRoutes = require('./routes/feedbacks.routes');
+const certificatesRoutes = require('./routes/certificates.routes');
+const adminRoutes = require('./routes/admin.routes');
+const searchRoutes = require('./routes/search.routes');
+const staffRoutes = require('./routes/staff.routes');
 
 // ── Initialize Services (registers EventBus listeners) ──────────────────
 require('./services/audit/audit.service');
 require('./services/notifications/notification.service');
+
+// ── Initialize Workers (UC0026) ─────────────────────────────────────────
+const schedulerWorker = require('./workers/scheduler.worker');
+schedulerWorker.start();
 
 // =============================================================================
 // APP SETUP
@@ -47,8 +58,8 @@ const API_PREFIX = '/api/v1';
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.NEXT_PUBLIC_API_URL
-      ? process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '')
+    origin: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
       : ['http://localhost:3000', 'http://localhost:5173'],
     credentials: true,
   })
@@ -88,6 +99,13 @@ app.use(`${API_PREFIX}/judging`, judgingRoutes);
 app.use(`${API_PREFIX}/matching`, matchingRoutes);
 app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
 app.use(`${API_PREFIX}/analytics`, analyticsRoutes);
+app.use(`${API_PREFIX}/mentorship`, mentorshipRoutes);
+app.use(`${API_PREFIX}/discussions`, discussionsRoutes);
+app.use(`${API_PREFIX}/events/:eventId/feedbacks`, feedbacksRoutes);
+app.use(`${API_PREFIX}/certificates`, certificatesRoutes);
+app.use(`${API_PREFIX}/admin`, adminRoutes);
+app.use(`${API_PREFIX}/search`, searchRoutes);
+app.use(`${API_PREFIX}/events/:eventId/staff`, staffRoutes);
 
 // ── 404 Handler ─────────────────────────────────────────────────────────
 app.use((req, res, next) => {

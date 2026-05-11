@@ -8,11 +8,28 @@
 
 const { Router } = require('express');
 const Joi = require('joi');
+const multer = require('multer');
+const path = require('path');
 const submissionsController = require('../controllers/submissions.controller');
 const authenticate = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const AppError = require('../utils/AppError');
 
 const router = Router();
+
+const upload = multer({
+  dest: path.join(__dirname, '../../../uploads'),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB size limit
+});
+
+const uploadMiddleware = (req, res, next) => {
+  upload.array('files', 10)(req, res, (err) => {
+    if (err) {
+      return next(new AppError('A required file fails to upload due to network interruption or size limit.', 400));
+    }
+    next();
+  });
+};
 
 // ── Validation Schemas ──────────────────────────────────────────────────
 
@@ -31,7 +48,7 @@ const upsertSchema = Joi.object({
 
 router.use(authenticate);
 
-router.post('/', validate(upsertSchema), submissionsController.upsert);
+router.post('/', uploadMiddleware, validate(upsertSchema), submissionsController.upsert);
 router.post('/:id/submit', submissionsController.submit);
 router.get('/:id', submissionsController.getById);
 router.get('/hackathon/:hackathonId', submissionsController.listByHackathon);

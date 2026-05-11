@@ -40,7 +40,7 @@ class ScoringNormalizationService {
     });
     if (!criteria) {
       const AppError = require('../../utils/AppError');
-      throw new AppError('Judging criteria not found.', 404);
+      throw new AppError('Scoring criteria unavailable. Please try again.', 404);
     }
     if (value < 0 || value > criteria.maxScore) {
       const AppError = require('../../utils/AppError');
@@ -50,8 +50,8 @@ class ScoringNormalizationService {
       );
     }
 
-    // Upsert score (a judge can update their score)
-    const score = await prisma.score.upsert({
+    // AF2 check: ensure judge hasn't already scored this criteria
+    const existingScore = await prisma.score.findUnique({
       where: {
         submissionId_judgeId_criteriaId: {
           submissionId,
@@ -59,8 +59,16 @@ class ScoringNormalizationService {
           criteriaId,
         },
       },
-      update: { value, comment, updatedAt: new Date() },
-      create: { submissionId, judgeId, criteriaId, value, comment },
+    });
+
+    if (existingScore) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('You have already scored this project.', 403);
+    }
+
+    // Create score (no updates allowed)
+    const score = await prisma.score.create({
+      data: { submissionId, judgeId, criteriaId, value, comment },
     });
 
     // Emit event for audit logging
@@ -238,6 +246,18 @@ class ScoringNormalizationService {
       ]);
 
       filteredJudgeIds = filteredJudgeIds.filter((id) => !dropped.has(id));
+    } else {
+      // AF1: Insufficient Scores Warning
+      eventBus.emit('audit:log', {
+        actorId: 'SYSTEM',
+        action: 'WARNING_INSUFFICIENT_SCORES',
+        entity: 'submission',
+        entityId: scores[0].submissionId,
+        details: { 
+          judgeCount: filteredJudgeIds.length, 
+          message: 'Insufficient scores for normalization. Simple average used.' 
+        },
+      });
     }
 
     // Collect remaining scores
@@ -310,9 +330,36 @@ class ScoringNormalizationService {
 
   /**
    * @param {string} submissionId
+   * @param {object} user
    * @returns {object} Detailed score breakdown by criteria and judge
    */
-  async getScoreBreakdown(submissionId) {
+  async getScoreBreakdown(submissionId, user) {
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        team: { include: { members: true } },
+        hackathon: true
+      }
+    });
+
+    if (!submission) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Submission not found.', 404);
+    }
+
+    if (user.role === 'PARTICIPANT') {
+      const isMember = submission.team.members.some(m => m.userId === user.id);
+      if (!isMember) {
+        const AppError = require('../../utils/AppError');
+        throw new AppError('You do not have access to this submission.', 403);
+      }
+
+      if (submission.hackathon.feedbackVisibility !== 'PUBLIC') {
+        const AppError = require('../../utils/AppError');
+        throw new AppError('Feedback release is locked until all final results are published.', 403);
+      }
+    }
+
     const scores = await prisma.score.findMany({
       where: { submissionId },
       include: {
@@ -341,7 +388,45 @@ class ScoringNormalizationService {
       });
     }
 
-    return Object.values(breakdown);
+    const breakdownArray = Object.values(breakdown);
+
+    let message = null;
+    if (user.role === 'PARTICIPANT') {
+      const hasFeedback = scores.some(s => s.comment && s.comment.trim().length > 0);
+      if (!hasFeedback) {
+        message = 'No written feedback was provided by the Judge for this submission.';
+      }
+    }
+
+    return { breakdown: breakdownArray, message };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PUBLIC: Release Feedback
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * @param {string} hackathonId
+   */
+  async releaseFeedback(hackathonId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId }
+    });
+
+    if (!hackathon) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Hackathon not found.', 404);
+    }
+
+    if (hackathon.status !== 'COMPLETED') {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Feedback release is locked until all final results are published.', 403);
+    }
+
+    await prisma.hackathon.update({
+      where: { id: hackathonId },
+      data: { feedbackVisibility: 'PUBLIC', feedbackReleaseAt: new Date() }
+    });
   }
 }
 

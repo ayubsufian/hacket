@@ -7,6 +7,7 @@ const prisma = require('../../config/database');
 const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
 const { levenshteinDistance } = require('../../utils/levenshtein');
+const { categorizeDescription } = require('../../utils/categorizer');
 
 class EventsService {
   /**
@@ -16,18 +17,37 @@ class EventsService {
    * @returns {object} Created hackathon
    */
   async create(organizerId, data) {
-    const { tags, ...hackathonData } = data;
+    const { tags, overrideConflict, ...hackathonData } = data;
+
+    // AF1 & AF2: Validate publishing fields if status is PUBLISHED
+    this._validatePublishingFields(hackathonData);
+
+    // AF3: Check duplicate title
+    const isConflictOverridden = await this._checkDuplicateTitle(hackathonData.title, overrideConflict);
 
     // Generate slug from title
-    const slug = this._generateSlug(hackathonData.title);
+    let slug = this._generateSlug(hackathonData.title);
+    if (isConflictOverridden) {
+      slug += '-' + Date.now().toString(36).slice(-4);
+    }
+
+    // UC0013: Run Categorizer
+    const autoTags = categorizeDescription(hackathonData.description);
+    const finalTagsMap = new Map();
+    autoTags.forEach(t => finalTagsMap.set(t.tag, t));
+    
+    if (tags) {
+      tags.forEach(t => finalTagsMap.set(t, { tag: t, isPending: false }));
+    }
+    const finalTagsArray = Array.from(finalTagsMap.values());
 
     const hackathon = await prisma.hackathon.create({
       data: {
         ...hackathonData,
         slug,
         organizerId,
-        tags: tags
-          ? { create: tags.map((tag) => ({ tag })) }
+        tags: finalTagsArray.length > 0
+          ? { create: finalTagsArray }
           : undefined,
       },
       include: { tags: true },
@@ -156,7 +176,7 @@ class EventsService {
     // AF2: Auto-correction
     if (search && total === 0) {
       const candidates = await prisma.hackathon.findMany({
-        where: { status: { in: ['PUBLISHED', 'REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING'] } },
+        where: { status: { in: ['REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING'] } },
         select: { title: true, region: true },
         take: 100,
       });
@@ -221,18 +241,52 @@ class EventsService {
       throw new AppError('You can only edit hackathons you organize.', 403);
     }
 
-    const { tags, ...updateData } = data;
+    const { tags, overrideConflict, ...updateData } = data;
+
+    // Merge existing hackathon with incoming updates to validate publishing state
+    const mergedData = { ...hackathon, ...updateData };
+    this._validatePublishingFields(mergedData);
+
+    // AF3: Check duplicate title (excluding current hackathon)
+    if (updateData.title) {
+      const isConflictOverridden = await this._checkDuplicateTitle(updateData.title, overrideConflict, hackathonId);
+      if (isConflictOverridden) {
+        updateData.slug = this._generateSlug(updateData.title) + '-' + Date.now().toString(36).slice(-4);
+      } else {
+        updateData.slug = this._generateSlug(updateData.title);
+      }
+    }
+
+    // UC0013: Run Categorizer if description or tags are updated
+    let tagsPayload = undefined;
+    if (tags || updateData.description) {
+      const autoTags = categorizeDescription(mergedData.description);
+      const finalTagsMap = new Map();
+      
+      // Preserve existing tags from DB if user didn't explicitly override them
+      if (!tags && hackathon.tags) {
+         // Assuming hackathon included tags? wait, update() doesn't include tags when finding unique!
+         // We should just use tags from payload, or autoTags.
+      }
+      
+      autoTags.forEach(t => finalTagsMap.set(t.tag, t));
+      
+      if (tags) {
+        tags.forEach(t => finalTagsMap.set(t, { tag: t, isPending: false }));
+      }
+      const finalTagsArray = Array.from(finalTagsMap.values());
+      
+      tagsPayload = {
+        deleteMany: {},
+        create: finalTagsArray,
+      };
+    }
 
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
       data: {
         ...updateData,
-        tags: tags
-          ? {
-              deleteMany: {},
-              create: tags.map((tag) => ({ tag })),
-            }
-          : undefined,
+        tags: tagsPayload,
       },
       include: { tags: true },
     });
@@ -375,6 +429,46 @@ class EventsService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  _validatePublishingFields(data) {
+    if (data.status !== 'REGISTRATION_OPEN') return;
+
+    const required = [
+      'description',
+      'registrationStart',
+      'registrationEnd',
+      'eventStart',
+      'eventEnd',
+      'submissionDeadline',
+    ];
+    
+    const missing = required.filter((field) => !data[field]);
+    if (missing.length > 0) {
+      throw new AppError(
+        `Missing mandatory fields for publishing: ${missing.join(', ')}`,
+        400
+      );
+    }
+  }
+
+  async _checkDuplicateTitle(title, overrideConflict, excludeId = null) {
+    if (!title) return false;
+
+    const existing = await prisma.hackathon.findFirst({
+      where: {
+        title: { equals: title, mode: 'insensitive' },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+
+    if (existing) {
+      if (!overrideConflict) {
+        throw new AppError('A hackathon with this title already exists. Please review it or pass overrideConflict=true to proceed.', 409);
+      }
+      return true; // conflict overridden
+    }
+    return false;
+  }
 
   _generateSlug(title) {
     const base = title

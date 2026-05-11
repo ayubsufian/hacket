@@ -43,13 +43,20 @@ router.post(
   judgingController.normalizeScores
 );
 
+// Organizer triggers feedback release (AF2)
+router.post(
+  '/release-feedback/:hackathonId',
+  authorize('ORGANIZER', 'ADMIN'),
+  judgingController.releaseFeedback
+);
+
 // Leaderboard (authenticated users can view)
 router.get('/leaderboard/:hackathonId', judgingController.getLeaderboard);
 
-// Score breakdown (judges and organizers)
+// Score breakdown (judges, organizers, and participants)
 router.get(
   '/breakdown/:submissionId',
-  authorize('JUDGE', 'ORGANIZER', 'ADMIN'),
+  authorize('PARTICIPANT', 'JUDGE', 'ORGANIZER', 'ADMIN'),
   judgingController.getScoreBreakdown
 );
 

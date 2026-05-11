@@ -16,22 +16,46 @@ class RecommendationService {
    * @param {object} [options]
    * @param {number} [options.limit=10]
    * @param {boolean} [options.includeRegistered=false]
-   * @returns {Array<{ hackathon, relevanceScore, matchedTags }>}
+   * @returns {Promise<{ recommendations: Array, metadata: { prompt: string|null, isFallback: boolean } }>}
    */
   async recommendEvents(userId, { limit = 10, includeRegistered = false } = {}) {
-    // 1. Load user interests
+    // 1. Load user interests and past participation
     const profile = await prisma.userProfile.findUnique({
       where: { userId },
       select: { interests: true, region: true },
     });
 
-    if (!profile || profile.interests.length === 0) {
-      // Fallback: return popular/upcoming events
-      return this._getUpcomingEvents(limit);
+    const userTeams = await prisma.teamMember.findMany({
+      where: { userId },
+      select: { 
+        team: { 
+          select: { 
+            hackathonId: true, 
+            hackathon: { select: { tags: { select: { tag: true } } } } 
+          } 
+        } 
+      },
+    });
+
+    const pastHackathonTags = userTeams.flatMap(tm => tm.team.hackathon.tags.map(t => t.tag));
+    const explicitInterests = profile?.interests || [];
+    
+    const combinedInterests = [...explicitInterests, ...pastHackathonTags];
+
+    if (combinedInterests.length === 0) {
+      // AF1: Insufficient Profile Data
+      const fallbackEvents = await this._getUpcomingEvents(limit);
+      return {
+        recommendations: fallbackEvents,
+        metadata: {
+          prompt: 'Update your profile for better recommendations.',
+          isFallback: true
+        }
+      };
     }
 
     const userInterests = new Set(
-      profile.interests.map((i) => i.toLowerCase().trim())
+      combinedInterests.map((i) => i.toLowerCase().trim())
     );
 
     // 2. Load active/upcoming hackathons with tags
@@ -50,10 +74,6 @@ class RecommendationService {
     // 3. If requested, filter out already-registered events
     let filteredHackathons = hackathons;
     if (!includeRegistered) {
-      const userTeams = await prisma.teamMember.findMany({
-        where: { userId },
-        select: { team: { select: { hackathonId: true } } },
-      });
       const registeredIds = new Set(userTeams.map((t) => t.team.hackathonId));
       filteredHackathons = hackathons.filter((h) => !registeredIds.has(h.id));
     }
@@ -115,7 +135,26 @@ class RecommendationService {
 
     // 5. Sort by relevance and return top-N
     scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
-    return scored.slice(0, limit);
+    
+    // AF2: No Matching Events
+    if (scored.length === 0 || scored[0].relevanceScore === 0) {
+      const fallbackEvents = await this._getUpcomingEvents(limit);
+      return {
+        recommendations: fallbackEvents,
+        metadata: {
+          prompt: 'No specific recommendations found. Displaying popular or featured events instead.',
+          isFallback: true
+        }
+      };
+    }
+
+    return {
+      recommendations: scored.slice(0, limit),
+      metadata: {
+        prompt: null,
+        isFallback: false
+      }
+    };
   }
 
   /**

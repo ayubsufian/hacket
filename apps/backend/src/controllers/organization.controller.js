@@ -2,7 +2,7 @@
 // HackET — Organization Controller
 // =============================================================================
 
-const organizationService = require('../services/organization.service');
+const organizationService = require('../services/organization/organization.service');
 const catchAsync = require('../utils/catchAsync');
 
 exports.getMe = catchAsync(async (req, res) => {

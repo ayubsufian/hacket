@@ -55,10 +55,12 @@ enum SubmissionStatus {
 
 enum NotificationType {
   DEADLINE_REMINDER
+  DEADLINE_WARNING
   TEAM_INVITE
   SCORE_PUBLISHED
   CERTIFICATE_ISSUED
   ANNOUNCEMENT
+  SYSTEM_ALERT
 }
 
 enum AuditAction {
@@ -71,11 +73,21 @@ enum AuditAction {
   SCORE_OVERRIDE
   VIEW_SCOREBOARD
   MISSING_TRANSLATION
+  TRANSLATION_MISSING
   CREATE_ADMIN
+  ADMIN_PROVISIONED
   SUSPEND_ACCOUNT
+  USER_SUSPENDED
   REVOKE_SESSION
   EXPORT_LOGS
+  EXPORT_FORMAT_FAILURE
   PROVISION_ADMIN_INVITE
+  STAFF_INVITED
+  STAFF_UPDATED
+  CERTIFICATE_LINK_FAILURE
+  ARCHIVE_FAILURE
+  HACKATHON_ARCHIVED
+  WARNING_INSUFFICIENT_SCORES
 }
 
 enum StaffRole {
@@ -369,6 +381,7 @@ model HackathonTag {
   id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   hackathonId String @map("hackathon_id") @db.Uuid
   tag         String @db.VarChar(100)
+  isPending   Boolean @default(false) @map("is_pending")
 
   // Relations
   hackathon Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)

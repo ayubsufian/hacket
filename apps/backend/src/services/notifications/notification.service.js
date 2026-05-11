@@ -119,9 +119,79 @@ class NotificationService {
     return certificate;
   }
 
+  // ─── Real-Time Transport ──────────────────────────────────────────────
+
+  /**
+   * Simulated Email Transport (AF2)
+   */
+  async _sendRealTimeEmail(userId, email, title, message, retryCount = 0) {
+    try {
+      // Simulate 20% network failure rate for demonstration
+      const simulateFailure = Math.random() < 0.2;
+      if (simulateFailure) {
+        throw new Error('SMTP Connection Timeout');
+      }
+
+      console.log(`[Email Transport] Successfully delivered to ${email}: ${title}`);
+    } catch (err) {
+      console.warn(`[Email Transport] Failed to deliver to ${email}. Reason: ${err.message}`);
+      
+      if (retryCount < 3) {
+        const backoffTime = Math.pow(2, retryCount) * 1000;
+        console.log(`[Email Transport] Retrying delivery to ${email} in ${backoffTime}ms...`);
+        setTimeout(() => {
+          this._sendRealTimeEmail(userId, email, title, message, retryCount + 1);
+        }, backoffTime);
+      } else {
+        console.error(`[Email Transport] CRITICAL: Delivery to ${email} permanently failed after 3 retries.`);
+      }
+    }
+  }
+
   // ─── Event Listeners ──────────────────────────────────────────────────
 
   _registerEventListeners() {
+    // Deadline Upcoming (UC0026)
+    eventBus.on('deadline:upcoming', async ({ hackathonId, hackathonTitle, deadline, deadlineType }) => {
+      try {
+        const members = await prisma.teamMember.findMany({
+          where: { team: { hackathonId } },
+          select: { userId: true, user: { select: { email: true } } },
+        });
+
+        const uniqueUsers = new Map();
+        for (const m of members) uniqueUsers.set(m.userId, m.user.email);
+
+        const title = `🚨 Action Required: 24 Hours Left!`;
+        const message = `The submission deadline for "${hackathonTitle}" is strictly closing in 24 hours.`;
+
+        for (const [userId, email] of uniqueUsers.entries()) {
+          // 1. Create In-App Notification (Always)
+          await this.create({
+            userId,
+            type: 'DEADLINE_WARNING',
+            title,
+            message,
+            metadata: { hackathonId, deadline }
+          });
+
+          // 2. Fetch User Preferences (AF1)
+          const prefs = await prisma.userNotificationPreference.findUnique({
+            where: { userId }
+          });
+
+          // 3. Trigger Real-Time Transport if opted in
+          if (!prefs || prefs.email === true) {
+            this._sendRealTimeEmail(userId, email, title, message);
+          } else {
+            console.log(`[Notification] User ${userId} opted out of emails. Bypassing transport.`);
+          }
+        }
+      } catch (err) {
+        console.error('[Notification] Failed to process deadline:upcoming:', err.message);
+      }
+    });
+
     // Team invitation
     eventBus.on('team:invited', async ({ teamId, senderId, receiverId }) => {
       try {

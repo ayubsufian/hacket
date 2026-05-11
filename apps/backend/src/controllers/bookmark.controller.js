@@ -2,7 +2,7 @@
 // HackET — Bookmark Controller
 // =============================================================================
 
-const bookmarkService = require('../services/bookmark.service');
+const bookmarkService = require('../services/bookmark/bookmark.service');
 const catchAsync = require('../utils/catchAsync');
 
 exports.addBookmark = catchAsync(async (req, res) => {
