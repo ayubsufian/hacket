@@ -27,7 +27,7 @@ const updateProfileSchema = Joi.object({
   interests: Joi.array().items(Joi.string().max(50)).max(50),
   githubUrl: Joi.string().uri().allow(null, ''),
   linkedinUrl: Joi.string().uri().allow(null, ''),
-  preferredLocale: Joi.string().valid('en', 'fr', 'es', 'de').default('en'),
+  preferredLocale: Joi.string().valid('en', 'am').default('en'),
   city: Joi.string().max(100).allow(null, ''),
   region: Joi.string().max(100).allow(null, ''),
   dateOfBirth: Joi.date().iso().allow(null),

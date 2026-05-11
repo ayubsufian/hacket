@@ -144,7 +144,7 @@ class TeamsService {
       },
     });
     if (team._count.members >= team.hackathon.maxTeamSize) {
-      throw new AppError('Team is already full.', 400);
+      throw new AppError(`Team size limit reached (${team.hackathon.maxTeamSize} members).`, 400);
     }
 
     const invitation = await prisma.teamInvitation.create({
@@ -194,6 +194,14 @@ class TeamsService {
         where: { id: invitationId },
         data: { status: 'EXPIRED' },
       });
+      
+      // AF2: Notify sender that invite expired
+      eventBus.emit('team:invite_declined', {
+        teamId: invitation.teamId,
+        senderId: invitation.senderId,
+        receiverId: userId,
+        reason: 'EXPIRED'
+      });
       throw new AppError('Invitation has expired.', 400);
     }
 
@@ -235,6 +243,14 @@ class TeamsService {
         where: { id: invitationId },
         data: { status: 'DECLINED' },
       });
+      
+      // AF2: Notify sender that invite was declined
+      eventBus.emit('team:invite_declined', {
+        teamId: invitation.teamId,
+        senderId: invitation.senderId,
+        receiverId: userId,
+        reason: 'DECLINED'
+      });
     }
 
     return { status: accept ? 'ACCEPTED' : 'DECLINED' };
@@ -275,10 +291,29 @@ class TeamsService {
           data: { role: 'leader' },
         }),
       ]);
+      
+      // AF3: Notify new leader that previous leader left
+      eventBus.emit('team:member_left', {
+        teamId,
+        leaderId: otherMembers[0].userId,
+        userId
+      });
     } else {
       await prisma.teamMember.delete({
         where: { teamId_userId: { teamId, userId } },
       });
+      
+      // AF3: Notify the current leader that a member left
+      const leader = await prisma.teamMember.findFirst({
+        where: { teamId, role: 'leader' }
+      });
+      if (leader) {
+        eventBus.emit('team:member_left', {
+          teamId,
+          leaderId: leader.userId,
+          userId
+        });
+      }
     }
 
     return { message: 'Left team successfully.' };

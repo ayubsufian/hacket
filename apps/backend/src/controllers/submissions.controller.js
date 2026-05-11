@@ -6,6 +6,10 @@ const submissionsService = require('../services/submissions/submissions.service'
 const catchAsync = require('../utils/catchAsync');
 
 exports.upsert = catchAsync(async (req, res) => {
+  if (req.files && req.files.length > 0) {
+    req.body.fileUrls = req.files.map(f => `/uploads/${f.filename}`);
+  }
+
   const submission = await submissionsService.upsert({
     teamId: req.body.teamId,
     userId: req.user.id,

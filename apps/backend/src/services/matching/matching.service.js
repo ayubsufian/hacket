@@ -152,7 +152,19 @@ class TeamMatchingEngine {
 
     // 5. Sort by match score descending and return top-N
     scoredTeams.sort((a, b) => b.matchScore - a.matchScore);
-    return scoredTeams.slice(0, limit);
+    
+    // AF1: No Suitable Matches Found
+    if (scoredTeams.length === 0) {
+      return {
+        suggestions: [],
+        metadata: { prompt: 'No suitable matches found at this time. Try again later or broaden your search criteria.' }
+      };
+    }
+
+    return {
+      suggestions: scoredTeams.slice(0, limit),
+      metadata: { prompt: null }
+    };
   }
 
   /**
@@ -197,6 +209,7 @@ class TeamMatchingEngine {
     // and NOT already in this team
     const candidates = await prisma.userProfile.findMany({
       where: {
+        isSeekingTeam: true, // AF2: Participant Not Seeking Team
         user: {
           role: 'PARTICIPANT',
           isActive: true,
@@ -242,7 +255,19 @@ class TeamMatchingEngine {
     });
 
     scored.sort((a, b) => b.matchScore - a.matchScore);
-    return scored.slice(0, limit);
+    
+    // AF1: No Suitable Matches Found
+    if (scored.length === 0) {
+      return {
+        suggestions: [],
+        metadata: { prompt: 'No suitable matches found at this time. Try again later or broaden your search criteria.' }
+      };
+    }
+
+    return {
+      suggestions: scored.slice(0, limit),
+      metadata: { prompt: null }
+    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────

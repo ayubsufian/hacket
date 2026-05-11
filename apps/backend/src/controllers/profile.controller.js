@@ -2,7 +2,7 @@
 // HackET — Profile Controller
 // =============================================================================
 
-const profileService = require('../services/profile.service');
+const profileService = require('../services/profile/profile.service');
 const catchAsync = require('../utils/catchAsync');
 
 exports.getMe = catchAsync(async (req, res) => {

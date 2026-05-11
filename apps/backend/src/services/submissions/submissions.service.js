@@ -31,7 +31,7 @@ class SubmissionsService {
             status: true,
           },
         },
-        submission: { select: { id: true } },
+        submission: true,
       },
     });
 
@@ -40,7 +40,7 @@ class SubmissionsService {
     // Deadline check
     const now = new Date();
     if (now > team.hackathon.submissionDeadline) {
-      throw new AppError('The submission deadline has passed.', 400);
+      throw new AppError('Submission deadline has passed. Submission is locked.', 400);
     }
 
     if (!['IN_PROGRESS', 'JUDGING'].includes(team.hackathon.status)) {
@@ -63,6 +63,17 @@ class SubmissionsService {
     let submission;
 
     if (team.submission) {
+      // AF3: Archive previous version metadata
+      await prisma.submissionHistory.create({
+        data: {
+          submissionId: team.submission.id,
+          previousTitle: team.submission.title,
+          previousDescription: team.submission.description,
+          previousFileUrls: team.submission.fileUrls,
+          changedBy: userId
+        }
+      });
+
       // Update existing
       submission = await prisma.submission.update({
         where: { id: team.submission.id },
@@ -127,7 +138,7 @@ class SubmissionsService {
 
     // Deadline check
     if (new Date() > submission.team.hackathon.submissionDeadline) {
-      throw new AppError('The submission deadline has passed.', 400);
+      throw new AppError('Submission deadline has passed. Submission is locked.', 400);
     }
 
     // Require at least a title and one link

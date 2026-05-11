@@ -21,23 +21,26 @@ const router = Router();
 
 const createSchema = Joi.object({
   title: Joi.string().min(3).max(255).required(),
+  status: Joi.string().valid('DRAFT', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'IN_PROGRESS', 'JUDGING', 'COMPLETED', 'ARCHIVED').default('DRAFT'),
+  overrideConflict: Joi.boolean().default(false),
   titleAm: Joi.string().max(255).allow(null, ''),
-  description: Joi.string().min(10).required(),
+  description: Joi.string().allow(null, ''),
   descriptionAm: Joi.string().allow(null, ''),
   coverImageUrl: Joi.string().uri().allow(null, ''),
   maxTeamSize: Joi.number().integer().min(1).max(20).default(5),
   minTeamSize: Joi.number().integer().min(1).max(20).default(1),
   maxParticipants: Joi.number().integer().min(1).allow(null),
-  registrationStart: Joi.date().iso().required(),
-  registrationEnd: Joi.date().iso().greater(Joi.ref('registrationStart')).required(),
-  eventStart: Joi.date().iso().required(),
-  eventEnd: Joi.date().iso().greater(Joi.ref('eventStart')).required(),
-  submissionDeadline: Joi.date().iso().required(),
+  registrationStart: Joi.date().iso().allow(null),
+  registrationEnd: Joi.date().iso().greater(Joi.ref('registrationStart')).allow(null),
+  eventStart: Joi.date().iso().allow(null),
+  eventEnd: Joi.date().iso().greater(Joi.ref('eventStart')).allow(null),
+  submissionDeadline: Joi.date().iso().allow(null),
   judgingStart: Joi.date().iso().allow(null),
   judgingEnd: Joi.date().iso().allow(null),
   rules: Joi.string().allow(null, ''),
   rulesAm: Joi.string().allow(null, ''),
   prizes: Joi.object().allow(null),
+  prerequisites: Joi.object().allow(null),
   region: Joi.string().max(100).allow(null, ''),
   venue: Joi.string().allow(null, ''),
   isVirtual: Joi.boolean().default(false),
@@ -47,15 +50,7 @@ const createSchema = Joi.object({
 });
 
 const updateSchema = createSchema.fork(
-  [
-    'title',
-    'description',
-    'registrationStart',
-    'registrationEnd',
-    'eventStart',
-    'eventEnd',
-    'submissionDeadline',
-  ],
+  ['title'],
   (field) => field.optional()
 );
 

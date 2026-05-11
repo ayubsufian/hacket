@@ -49,16 +49,28 @@ exports.getLeaderboard = catchAsync(async (req, res) => {
     success: true,
     data: result.data,
     pagination: result.pagination,
+    metadata: result.metadata,
+  });
+});
+
+exports.releaseFeedback = catchAsync(async (req, res) => {
+  await scoringService.releaseFeedback(req.params.hackathonId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Feedback has been successfully released to participants.',
   });
 });
 
 exports.getScoreBreakdown = catchAsync(async (req, res) => {
-  const breakdown = await scoringService.getScoreBreakdown(
-    req.params.submissionId
+  const result = await scoringService.getScoreBreakdown(
+    req.params.submissionId,
+    req.user
   );
 
   res.status(200).json({
     success: true,
-    data: { breakdown },
+    message: result.message || undefined,
+    data: { breakdown: result.breakdown },
   });
 });
