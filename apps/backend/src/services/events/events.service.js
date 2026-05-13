@@ -8,6 +8,7 @@ const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
 const { levenshteinDistance } = require('../../utils/levenshtein');
 const { categorizeDescription } = require('../../utils/categorizer');
+const { redisClient } = require('../../config/redis');
 
 class EventsService {
   /**
@@ -106,6 +107,16 @@ class EventsService {
    * @returns {{ data: Array, pagination: object }}
    */
   async list({ status, region, theme, category, schedule, search, page = 1, limit = 12, actorId } = {}) {
+    const cacheKey = `events:list:${JSON.stringify({ status, region, theme, category, schedule, search, page, limit })}`;
+    if (!actorId) { // Only cache general searches, not actor-specific logs
+      try {
+        const cached = await redisClient.get(cacheKey);
+        if (cached) return JSON.parse(cached);
+      } catch (err) {
+        console.warn('[Events] Redis cache get error:', err.message);
+      }
+    }
+
     const where = {};
 
     if (status) {
@@ -206,7 +217,7 @@ class EventsService {
       }
     }
 
-    return {
+    const result = {
       data: data.map((h) => ({
         ...h,
         tags: h.tags.map((t) => t.tag),
@@ -219,6 +230,16 @@ class EventsService {
       },
       suggestion,
     };
+
+    if (!actorId) {
+      try {
+        await redisClient.set(cacheKey, JSON.stringify(result), { EX: 60 * 5 }); // 5 min cache
+      } catch (err) {
+        console.warn('[Events] Redis cache set error:', err.message);
+      }
+    }
+
+    return result;
   }
 
   /**

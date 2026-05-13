@@ -5,12 +5,21 @@
 const prisma = require('../../config/database');
 const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
+const { redisClient } = require('../../config/redis');
 
 class ProfileService {
   /**
    * Get user profile along with current submissions and past participation.
    */
   async getProfileWithHistory(userId) {
+    const cacheKey = `profile:${userId}`;
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      console.warn('[Profile] Redis cache get error:', err.message);
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -79,11 +88,19 @@ class ProfileService {
     // Remove sensitive data
     const { password, ...safeUser } = user;
 
-    return {
+    const result = {
       user: safeUser,
       currentSubmissions,
       pastParticipation,
     };
+
+    try {
+      await redisClient.set(cacheKey, JSON.stringify(result), { EX: 60 * 15 }); // 15 min cache
+    } catch (err) {
+      console.warn('[Profile] Redis cache set error:', err.message);
+    }
+
+    return result;
   }
 
   /**
@@ -109,6 +126,12 @@ class ProfileService {
       entity: 'userProfile',
       entityId: profile.id,
     });
+
+    try {
+      await redisClient.del(`profile:${userId}`);
+    } catch (err) {
+      console.warn('[Profile] Redis cache del error:', err.message);
+    }
 
     return updatedProfile;
   }
