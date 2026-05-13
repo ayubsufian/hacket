@@ -44,9 +44,18 @@ const API_PREFIX = '/api/v1';
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.NEXT_PUBLIC_API_URL
-      ? process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '')
-      : ['http://localhost:3000', 'http://localhost:5173'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin) return callback(null, true);
+      // Allow any localhost origin for development
+      if (origin.match(/^http:\/\/localhost:\d+$/)) {
+        return callback(null, true);
+      }
+      if (origin.match(/^http:\/\/127\.0\.0\.1:\d+$/)) {
+        return callback(null, true);
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   })
 );

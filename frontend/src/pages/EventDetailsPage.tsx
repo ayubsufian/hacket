@@ -4,7 +4,6 @@ import { Calendar, Globe, MapPin, Users, Loader2, Target, MonitorPlay, ChevronLe
 import { getEvent, registerForEvent } from '../api/events'
 import { useAuth } from '../contexts/AuthContext'
 import type { Hackathon } from '../types/models'
-import { setActiveWorkspace } from '../utils/appState'
 
 export default function EventDetailsPage() {
   const { id } = useParams<{ id: string }>()
@@ -22,7 +21,7 @@ export default function EventDetailsPage() {
     setError(null)
 
     getEvent(id)
-      .then(r => { if (active) setEvent(r) })
+      .then(r => { if (active) setEvent(r as any) })
       .catch(err => { if (active) setError(err instanceof Error ? err.message : 'Failed to load event') })
       .finally(() => { if (active) setLoading(false) })
 
@@ -34,9 +33,8 @@ export default function EventDetailsPage() {
     try {
       setRegistering(true)
       setRegMsg(null)
-      const team = await registerForEvent(id)
-      setActiveWorkspace({ teamId: team.id, hackathonId: team.hackathonId })
-      setRegMsg({ type: 'ok', text: 'You have successfully registered for this event and your workspace is now ready.' })
+      await registerForEvent(id)
+      setRegMsg({ type: 'ok', text: 'You have successfully registered for this event!' })
       // Auto-refresh to get updated state if needed, though we don't have a distinct "isRegistered" boolean on the payload yet.
     } catch (err) {
       setRegMsg({ type: 'err', text: err instanceof Error ? err.message : 'Registration failed' })
@@ -73,18 +71,17 @@ export default function EventDetailsPage() {
         <ChevronLeft size={16} /> Back to discover
       </Link>
 
-      <div className="card-elevated overflow-hidden border border-white/70">
-        <div className="relative h-36 bg-[radial-gradient(circle_at_top_left,rgba(123,152,255,0.35),transparent_22%),linear-gradient(135deg,#1d2351_0%,#131b2e_45%,#0b1020_100%)]">
-          <div className="absolute inset-0 opacity-30" style={{ backgroundImage: 'linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+      <div className="card overflow-hidden">
+        <div className="h-32 bg-gradient-to-br from-accent-600 via-emerald-600 to-teal-800 relative">
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/micro-carbon.png')] opacity-20" />
         </div>
         <div className="px-6 py-8 sm:px-10 relative">
-          <div className="absolute -top-12 left-6 sm:left-10 flex h-24 w-24 items-center justify-center rounded-[1.7rem] border-4 border-surface bg-white p-2 shadow-xl">
+          <div className="absolute -top-12 left-6 sm:left-10 h-24 w-24 rounded-2xl shadow-xl bg-white flex items-center justify-center border-4 border-surface p-2">
             <Target size={40} className="text-accent-500" />
           </div>
 
           <div className="mt-10 sm:mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <p className="section-title text-accent-600">Event workspace</p>
               <div className="flex items-center gap-3 mb-2">
                 <span className={`badge ${isRegOpen ? 'badge-green' : event.status === 'IN_PROGRESS' ? 'badge-blue' : 'badge-gray'}`}>
                   {event.status.replace(/_/g, ' ')}
@@ -117,11 +114,6 @@ export default function EventDetailsPage() {
               {regMsg.text}
             </div>
           )}
-
-          <div className="mt-6 flex flex-wrap gap-2 text-xs">
-            <span className="badge badge-gray">Organizer: {event.organizerId || 'Assigned in backend'}</span>
-            <span className="badge badge-blue">Registration creates your active team workspace</span>
-          </div>
         </div>
       </div>
 

@@ -1,0 +1,27 @@
+src/pages/AdminPage.tsx(3,10): error TS2305: Module '"../api/client"' has no exported member 'apiGet'.
+src/pages/AdminPage.tsx(3,18): error TS2305: Module '"../api/client"' has no exported member 'apiPost'.
+src/pages/AdminPage.tsx(98,79): error TS2339: Property 'creatorId' does not exist on type 'Hackathon'.
+src/pages/Dashboard.tsx(3,20): error TS6133: 'Users' is declared but its value is never read.
+src/pages/EventDetailsPage.tsx(24,43): error TS2339: Property 'data' does not exist on type 'Hackathon'.
+src/pages/EventsPage.tsx(3,18): error TS6133: 'Loader2' is declared but its value is never read.
+src/pages/EventsPage.tsx(3,52): error TS6133: 'Clock' is declared but its value is never read.
+src/pages/EventsPage.tsx(117,22): error TS2304: Cannot find name 'Users'.
+src/pages/JudgeDashboard.tsx(132,50): error TS2339: Property 'repoUrl' does not exist on type 'Submission'.
+src/pages/JudgeDashboard.tsx(133,62): error TS2339: Property 'repoUrl' does not exist on type 'Submission'.
+src/pages/NotificationsPage.tsx(3,10): error TS2305: Module '"../api/client"' has no exported member 'apiGet'.
+src/pages/NotificationsPage.tsx(3,18): error TS2305: Module '"../api/client"' has no exported member 'apiPost'.
+src/pages/NotificationsPage.tsx(4,15): error TS2305: Module '"../types/models"' has no exported member 'Notification'.
+src/pages/OrganizerDashboard.tsx(2,66): error TS6133: 'Clock' is declared but its value is never read.
+src/pages/SubmissionsPage.tsx(2,1): error TS6133: 'Link' is declared but its value is never read.
+src/pages/SubmissionsPage.tsx(3,10): error TS2724: '"../api/submissions"' has no exported member named 'getMySubmission'. Did you mean 'getSubmission'?
+src/pages/SubmissionsPage.tsx(3,27): error TS2305: Module '"../api/submissions"' has no exported member 'submitProject'.
+src/pages/SubmissionsPage.tsx(3,42): error TS2305: Module '"../api/submissions"' has no exported member 'finalizeSubmission'.
+src/pages/TeamsPage.tsx(3,10): error TS2724: '"../api/teams"' has no exported member named 'getMyTeam'. Did you mean 'getTeam'?
+src/pages/TeamsPage.tsx(3,54): error TS2724: '"../api/teams"' has no exported member named 'respondToInvite'. Did you mean 'respondToInvitation'?
+src/pages/TeamsPage.tsx(3,71): error TS2305: Module '"../api/teams"' has no exported member 'inviteMember'.
+src/pages/TeamsPage.tsx(3,71): error TS6133: 'inviteMember' is declared but its value is never read.
+src/pages/TeamsPage.tsx(4,15): error TS2305: Module '"../types/models"' has no exported member 'TeamInfo'.
+src/pages/TeamsPage.tsx(38,27): error TS2339: Property 'data' does not exist on type 'Team'.
+src/pages/TeamsPage.tsx(47,43): error TS2353: Object literal may only specify known properties, and 'inviteCode' does not exist in type 'CreateTeamInput'.
+src/pages/TeamsPage.tsx(128,116): error TS2353: Object literal may only specify known properties, and 'repoUrl' does not exist in type 'UpdateTeamInput'.
+src/pages/TeamsPage.tsx(143,38): error TS7006: Parameter 'm' implicitly has an 'any' type.

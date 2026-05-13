@@ -8,6 +8,12 @@ const { createClient } = require('redis');
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const SESSION_TTL_SECONDS = 30 * 60; // 30-minute inactivity timeout
+const ALLOW_REDIS_FALLBACK =
+  process.env.ALLOW_REDIS_FALLBACK === 'true' ||
+  (!process.env.ALLOW_REDIS_FALLBACK && process.env.NODE_ENV !== 'production');
+
+let redisAvailable = false;
+const memorySessions = new Map();
 
 const redisClient = createClient({
   url: REDIS_URL,
@@ -33,7 +39,16 @@ redisClient.on('reconnecting', () => console.log('[Redis] Reconnecting...'));
  */
 async function connectRedis() {
   if (!redisClient.isOpen) {
-    await redisClient.connect();
+    try {
+      await redisClient.connect();
+      redisAvailable = true;
+    } catch (err) {
+      redisAvailable = false;
+      if (!ALLOW_REDIS_FALLBACK) {
+        throw err;
+      }
+      console.warn('[Redis] Unavailable. Falling back to in-memory sessions for local development.');
+    }
   }
 }
 
@@ -41,9 +56,10 @@ async function connectRedis() {
  * Gracefully disconnect from Redis. Call at shutdown.
  */
 async function disconnectRedis() {
-  if (redisClient.isOpen) {
+  if (redisClient.isOpen && redisAvailable) {
     await redisClient.quit();
   }
+  memorySessions.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +73,15 @@ async function disconnectRedis() {
  */
 async function setSession(userId, sessionData) {
   const key = `session:${userId}`;
-  await redisClient.set(key, JSON.stringify(sessionData), { EX: SESSION_TTL_SECONDS });
+  if (redisAvailable) {
+    await redisClient.set(key, JSON.stringify(sessionData), { EX: SESSION_TTL_SECONDS });
+    return;
+  }
+
+  memorySessions.set(key, {
+    payload: sessionData,
+    expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
+  });
 }
 
 /**
@@ -68,12 +92,23 @@ async function setSession(userId, sessionData) {
  */
 async function getSession(userId) {
   const key = `session:${userId}`;
-  const data = await redisClient.get(key);
-  if (!data) return null;
+  if (redisAvailable) {
+    const data = await redisClient.get(key);
+    if (!data) return null;
 
-  // Refresh TTL on every access (sliding window)
-  await redisClient.expire(key, SESSION_TTL_SECONDS);
-  return JSON.parse(data);
+    await redisClient.expire(key, SESSION_TTL_SECONDS);
+    return JSON.parse(data);
+  }
+
+  const data = memorySessions.get(key);
+  if (!data) return null;
+  if (Date.now() > data.expiresAt) {
+    memorySessions.delete(key);
+    return null;
+  }
+
+  data.expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
+  return data.payload;
 }
 
 /**
@@ -81,7 +116,12 @@ async function getSession(userId) {
  * @param {string} userId
  */
 async function destroySession(userId) {
-  await redisClient.del(`session:${userId}`);
+  const key = `session:${userId}`;
+  if (redisAvailable) {
+    await redisClient.del(key);
+    return;
+  }
+  memorySessions.delete(key);
 }
 
 module.exports = {

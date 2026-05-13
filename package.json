@@ -2,6 +2,7 @@
   "name": "hack-et-platform",
   "private": true,
   "workspaces": [
+    "frontend",
     "apps/*",
     "packages/*"
   ]
