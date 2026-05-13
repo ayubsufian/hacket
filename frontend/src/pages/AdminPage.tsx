@@ -27,7 +27,11 @@ export default function AdminPage() {
     useEffect(() => { void loadData() }, [])
 
     if (user?.role !== 'ADMIN') return (
-        <div className="py-20 text-center"><h1 className="text-xl font-bold text-gray-900">Access Denied</h1><p className="mt-2 text-gray-500">You must be a system administrator to view this page.</p></div>
+        <div className="py-20 text-center max-w-md mx-auto">
+            <h1 className="text-xl font-bold text-gray-900">Access Denied</h1>
+            <p className="mt-2 text-gray-500">You must be a system administrator to view this page.</p>
+            <p className="mt-4 text-sm text-gray-400">Log in with an <strong className="text-gray-600">ADMIN</strong> role account (e.g. the <code className="bg-gray-100 px-1 rounded">INITIAL_ADMIN_EMAIL</code> set in your backend <code className="bg-gray-100 px-1 rounded">.env</code>), then navigate to <code className="bg-gray-100 px-1 rounded">/admin</code>.</p>
+        </div>
     )
 
     if (loading) return <div className="p-8 flex justify-center"><Loader2 size={32} className="animate-spin text-accent-500" /></div>
@@ -59,7 +63,7 @@ export default function AdminPage() {
             </div>
 
             <div className="alert-warn">
-                Advanced admin mutations are intentionally hidden here because the current backend does not expose dedicated admin write endpoints. This page is production-safe and read-only.
+                <strong>Admin access:</strong> This page is only accessible to accounts with the <code className="bg-amber-100 px-1 rounded text-xs">ADMIN</code> role. Logged in as <strong>{user?.email}</strong>. Advanced admin mutations are read-only until dedicated backend admin endpoints are exposed.
             </div>
 
             <div className="grid gap-6 md:grid-cols-4 mb-8">

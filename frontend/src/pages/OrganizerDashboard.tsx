@@ -37,6 +37,14 @@ export default function OrganizerDashboard() {
             const startDate = new Date(form.start)
             const endDate = new Date(form.end)
 
+            if (!form.title.trim() || form.title.trim().length < 3) {
+                throw new Error('Event title must be at least 3 characters.')
+            }
+
+            if (!form.description.trim() || form.description.trim().length < 10) {
+                throw new Error('Description must be at least 10 characters.')
+            }
+
             if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
                 throw new Error('Select valid start and end dates.')
             }
@@ -53,15 +61,19 @@ export default function OrganizerDashboard() {
             const registrationEnd = new Date(startDate.getTime() - 24 * 60 * 60 * 1000)
 
             await createEvent({
-                title: form.title, description: form.description, rules: '',
+                title: form.title.trim(),
+                description: form.description.trim(),
+                rules: null,
                 eventStart: startDate.toISOString(),
                 eventEnd: endDate.toISOString(),
                 registrationStart: registrationStart.toISOString(),
                 registrationEnd: registrationEnd.toISOString(),
                 submissionDeadline: endDate.toISOString(),
-                maxTeamSize: form.max, minTeamSize: form.min,
-                isVirtual: !form.region, region: form.region || undefined,
-                prizes: {},
+                maxTeamSize: form.max,
+                minTeamSize: form.min,
+                isVirtual: !form.region.trim(),
+                region: form.region.trim() || null,
+                prizes: null,
                 tags: []
             })
             setForm({ title: '', description: '', region: '', start: '', end: '', min: 1, max: 4 })
@@ -111,7 +123,7 @@ export default function OrganizerDashboard() {
                         {createError && <div className="alert-error">{createError}</div>}
                         <div className="grid gap-6 sm:grid-cols-2">
                             <div className="sm:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Event Title</label><input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="input-field" placeholder="National Future Builders Hackathon" /></div>
-                            <div className="sm:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Description</label><textarea required value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="input-field h-24" placeholder="Event details..." /></div>
+                            <div className="sm:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-gray-400 font-normal text-xs">(min 10 characters)</span></label><textarea required minLength={10} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="input-field h-24" placeholder="Describe the hackathon — themes, goals, eligibility..." /></div>
 
                             <div><label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5"><Calendar size={14} className="text-gray-400" /> Start Date</label><input type="datetime-local" required value={form.start} onChange={e => setForm({ ...form, start: e.target.value })} className="input-field" /></div>
                             <div><label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5"><Calendar size={14} className="text-gray-400" /> End Date</label><input type="datetime-local" required value={form.end} onChange={e => setForm({ ...form, end: e.target.value })} className="input-field" /></div>

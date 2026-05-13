@@ -61,7 +61,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   /* ── Public topbar ── */
   const topbar = (
     <header className={`sticky top-0 z-40 transition-all duration-300 ${isLanding
-      ? 'bg-white/78 backdrop-blur-xl border-b border-white/70 shadow-nav'
+      ? 'bg-[linear-gradient(180deg,rgba(243,251,248,0.92)_0%,rgba(242,251,249,0.80)_100%)] backdrop-blur-xl border-b border-emerald-100/60 shadow-sm'
       : 'bg-white/92 backdrop-blur-xl border-b border-white/70 shadow-sm'
       }`}>
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
@@ -135,6 +135,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     >
                       <LayoutDashboard size={14} /> Dashboard
                     </Link>
+                    {user?.role === 'ADMIN' && (
+                      <Link
+                        to="/admin"
+                        onClick={() => setUserOpen(false)}
+                        className="mx-1.5 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors font-medium"
+                      >
+                        <Settings size={14} /> Admin Panel
+                      </Link>
+                    )}
                     <button
                       type="button"
                       onClick={() => void handleLogout()}
@@ -181,6 +190,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
               {n.label}
             </NavLink>
           ))}
+          {!isAuthenticated && (
+            <div className="mt-2 flex flex-col gap-1 border-t border-gray-100 pt-2">
+              <Link to="/login" onClick={() => setMobileOpen(false)} className="block rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-accent-600 transition-colors">Log in</Link>
+              <Link to="/signup" onClick={() => setMobileOpen(false)} className="block rounded-xl px-4 py-2.5 text-sm font-semibold text-accent-600 hover:bg-accent-50 transition-colors">Sign up</Link>
+            </div>
+          )}
         </div>
       )}
     </header>
