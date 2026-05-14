@@ -53,40 +53,43 @@ async function disconnectRedis() {
 
 /**
  * Create or refresh a user session in Redis.
- * @param {string} userId
+ * @param {string} token
  * @param {object} sessionData - Arbitrary session payload (role, etc.)
  */
-async function setSession(userId, sessionData) {
-  const key = `session:${userId}`;
-  const ttl = sessionData.role === 'PARTICIPANT' ? PARTICIPANT_TTL_SECONDS : SESSION_TTL_SECONDS;
-  await redisClient.set(key, JSON.stringify(sessionData), { EX: ttl });
+async function setSession(token, sessionData) {
+  const key = `session:${token}`;
+  
+  const hashData = {};
+  for (const [k, v] of Object.entries(sessionData)) {
+    hashData[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  }
+  
+  await redisClient.hSet(key, hashData);
+  await redisClient.expire(key, SESSION_TTL_SECONDS);
 }
 
 /**
  * Retrieve and refresh a session (sliding window).
  * Returns null if session expired or doesn't exist.
- * @param {string} userId
+ * @param {string} token
  * @returns {object|null}
  */
-async function getSession(userId) {
-  const key = `session:${userId}`;
-  const data = await redisClient.get(key);
-  if (!data) return null;
-
-  const sessionData = JSON.parse(data);
-  const ttl = sessionData.role === 'PARTICIPANT' ? PARTICIPANT_TTL_SECONDS : SESSION_TTL_SECONDS;
+async function getSession(token) {
+  const key = `session:${token}`;
+  const data = await redisClient.hGetAll(key);
+  if (!data || Object.keys(data).length === 0) return null;
 
   // Refresh TTL on every access (sliding window)
-  await redisClient.expire(key, ttl);
-  return sessionData;
+  await redisClient.expire(key, SESSION_TTL_SECONDS);
+  return data;
 }
 
 /**
  * Destroy a user session.
- * @param {string} userId
+ * @param {string} token
  */
-async function destroySession(userId) {
-  await redisClient.del(`session:${userId}`);
+async function destroySession(token) {
+  await redisClient.del(`session:${token}`);
 }
 
 module.exports = {

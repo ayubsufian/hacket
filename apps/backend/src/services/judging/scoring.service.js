@@ -177,11 +177,10 @@ class ScoringNormalizationService {
     const key = LEADERBOARD_KEY(hackathonId);
 
     try {
-      // Try Redis first
-      const cached = await redisClient.get(key);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        return parsed.slice(0, limit);
+      // Try Redis first (ZSET, highest to lowest)
+      const cached = await redisClient.zRange(key, 0, limit - 1, { REV: true });
+      if (cached && cached.length > 0) {
+        return cached.map(c => JSON.parse(c));
       }
     } catch (err) {
       console.warn('[Scoring] Redis cache miss, falling back to DB:', err.message);
@@ -308,19 +307,25 @@ class ScoringNormalizationService {
 
   async _cacheLeaderboard(hackathonId, results) {
     const key = LEADERBOARD_KEY(hackathonId);
-    const leaderboard = results.map((r) => ({
-      rank: r.rank,
-      submissionId: r.submissionId,
-      teamName: r.teamName,
-      finalScore: r.finalScore,
-    }));
 
     try {
-      await redisClient.set(key, JSON.stringify(leaderboard), {
-        EX: 60 * 5, // Cache for 5 minutes
+      const multi = redisClient.multi();
+      multi.del(key); // Clear existing
+      
+      results.forEach((r) => {
+        const member = JSON.stringify({
+          rank: r.rank,
+          submissionId: r.submissionId,
+          teamName: r.teamName,
+          finalScore: r.finalScore,
+        });
+        multi.zAdd(key, { score: r.finalScore, value: member });
       });
+      
+      multi.expire(key, 60 * 5); // Cache for 5 minutes
+      await multi.exec();
     } catch (err) {
-      console.warn('[Scoring] Failed to cache leaderboard:', err.message);
+      console.warn('[Scoring] Failed to cache leaderboard ZSET:', err.message);
     }
   }
 

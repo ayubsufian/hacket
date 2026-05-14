@@ -12,10 +12,16 @@ class ProfileService {
    * Get user profile along with current submissions and past participation.
    */
   async getProfileWithHistory(userId) {
-    const cacheKey = `profile:${userId}`;
+    const cacheKey = `user:profile:${userId}`;
     try {
-      const cached = await redisClient.get(cacheKey);
-      if (cached) return JSON.parse(cached);
+      const cached = await redisClient.hGetAll(cacheKey);
+      if (cached && Object.keys(cached).length > 0) {
+        return {
+          user: JSON.parse(cached.user),
+          currentSubmissions: JSON.parse(cached.currentSubmissions),
+          pastParticipation: JSON.parse(cached.pastParticipation),
+        };
+      }
     } catch (err) {
       console.warn('[Profile] Redis cache get error:', err.message);
     }
@@ -95,7 +101,12 @@ class ProfileService {
     };
 
     try {
-      await redisClient.set(cacheKey, JSON.stringify(result), { EX: 60 * 15 }); // 15 min cache
+      await redisClient.hSet(cacheKey, {
+        user: JSON.stringify(safeUser),
+        currentSubmissions: JSON.stringify(currentSubmissions),
+        pastParticipation: JSON.stringify(pastParticipation),
+      });
+      await redisClient.expire(cacheKey, 60 * 60 * 4); // 4 hours TTL
     } catch (err) {
       console.warn('[Profile] Redis cache set error:', err.message);
     }
@@ -128,7 +139,7 @@ class ProfileService {
     });
 
     try {
-      await redisClient.del(`profile:${userId}`);
+      await redisClient.del(`user:profile:${userId}`);
     } catch (err) {
       console.warn('[Profile] Redis cache del error:', err.message);
     }

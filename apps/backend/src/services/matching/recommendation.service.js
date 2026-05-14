@@ -19,6 +19,21 @@ class RecommendationService {
    * @returns {Promise<{ recommendations: Array, metadata: { prompt: string|null, isFallback: boolean } }>}
    */
   async recommendEvents(userId, { limit = 10, includeRegistered = false } = {}) {
+    const { redisClient } = require('../../config/redis');
+    const key = `recom:${userId}`;
+
+    try {
+      const cached = await redisClient.lRange(key, 0, -1);
+      if (cached && cached.length > 0) {
+        return {
+          recommendations: cached.map((c) => JSON.parse(c)),
+          metadata: { prompt: null, isFallback: false, fromCache: true },
+        };
+      }
+    } catch (err) {
+      console.warn('[Recommendation] Redis cache get error:', err.message);
+    }
+
     // 1. Load user interests and past participation
     const profile = await prisma.userProfile.findUnique({
       where: { userId },
@@ -148,8 +163,21 @@ class RecommendationService {
       };
     }
 
+    const finalRecommendations = scored.slice(0, limit);
+
+    try {
+      const { redisClient } = require('../../config/redis');
+      const multi = redisClient.multi();
+      multi.del(key); // Clear existing list
+      finalRecommendations.forEach((r) => multi.rPush(key, JSON.stringify(r)));
+      multi.expire(key, 12 * 60 * 60); // 12 Hours TTL
+      await multi.exec();
+    } catch (err) {
+      console.warn('[Recommendation] Redis cache set error:', err.message);
+    }
+
     return {
-      recommendations: scored.slice(0, limit),
+      recommendations: finalRecommendations,
       metadata: {
         prompt: null,
         isFallback: false

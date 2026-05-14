@@ -42,7 +42,7 @@ const authenticate = async (req, res, next) => {
     }
 
     // 3. Check Redis session (30-min sliding window)
-    const session = await getSession(decoded.id);
+    const session = await getSession(token);
     if (!session) {
       // If Redis session missing, also validate DB session to provide authoritative check
       const dbSession = await prisma.session.findFirst({
@@ -72,7 +72,7 @@ const authenticate = async (req, res, next) => {
         }
       }
       // Restore Redis session for sliding window
-      await setSession(decoded.id, {
+      await setSession(token, {
         role: decoded.role,
         email: decoded.email,
       });

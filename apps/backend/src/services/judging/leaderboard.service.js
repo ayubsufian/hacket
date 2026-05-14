@@ -55,16 +55,17 @@ class LeaderboardService {
 
     // Try Redis cache first
     try {
-      const cached = await redisClient.get(LEADERBOARD_KEY(hackathonId));
-      if (cached) {
-        const all = JSON.parse(cached);
+      const key = LEADERBOARD_KEY(hackathonId);
+      const cached = await redisClient.zRange(key, offset, offset + limit - 1, { REV: true });
+      if (cached && cached.length > 0) {
+        const total = await redisClient.zCard(key);
         return {
-          data: all.slice(offset, offset + limit),
+          data: cached.map(c => JSON.parse(c)),
           pagination: {
             page,
             limit,
-            total: all.length,
-            totalPages: Math.ceil(all.length / limit),
+            total,
+            totalPages: Math.ceil(total / limit),
           },
           metadata,
         };

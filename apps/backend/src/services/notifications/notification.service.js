@@ -15,16 +15,27 @@ class NotificationService {
    * Create an in-app notification.
    */
   async create({ userId, type, title, message, metadata }) {
-    return prisma.notification.create({
+    const notif = await prisma.notification.create({
       data: { userId, type, title, message, metadata },
     });
+
+    try {
+      const { redisClient } = require('../../config/redis');
+      const key = `notif:tray:${userId}`;
+      await redisClient.lPush(key, JSON.stringify(notif));
+      await redisClient.expire(key, 7 * 24 * 60 * 60); // 7 Days TTL
+    } catch (err) {
+      console.warn('[Notification] Redis lPush error:', err.message);
+    }
+
+    return notif;
   }
 
   /**
    * Send a notification to multiple users.
    */
   async broadcast({ userIds, type, title, message, metadata }) {
-    return prisma.notification.createMany({
+    await prisma.notification.createMany({
       data: userIds.map((userId) => ({
         userId,
         type,
@@ -33,6 +44,20 @@ class NotificationService {
         metadata,
       })),
     });
+
+    try {
+      const { redisClient } = require('../../config/redis');
+      const multi = redisClient.multi();
+      userIds.forEach((userId) => {
+        const key = `notif:tray:${userId}`;
+        const notif = { userId, type, title, message, metadata, createdAt: new Date() };
+        multi.lPush(key, JSON.stringify(notif));
+        multi.expire(key, 7 * 24 * 60 * 60); // 7 Days TTL
+      });
+      await multi.exec();
+    } catch (err) {
+      console.warn('[Notification] Redis broadcast error:', err.message);
+    }
   }
 
   /**

@@ -115,7 +115,7 @@ class AuthService {
     const token = this._generateToken(user);
 
     // Create Redis session
-    await setSession(user.id, { role: user.role, email: user.email });
+    await setSession(token, { role: user.role, email: user.email, id: user.id });
 
     // Create DB session record
     const decoded = jwt.decode(token);
@@ -190,7 +190,7 @@ class AuthService {
     const token = this._generateToken(user);
 
     // Create Redis session
-    await setSession(user.id, { role: user.role, email: user.email });
+    await setSession(token, { role: user.role, email: user.email, id: user.id });
 
     // Create DB session record (if metadata passed in arguments)
     try {
@@ -233,7 +233,9 @@ class AuthService {
    */
   async logout(userId, token) {
     // Remove Redis session
-    await destroySession(userId);
+    if (token) {
+      await destroySession(token);
+    }
 
     // Remove DB session(s)
     try {
@@ -388,14 +390,16 @@ class AuthService {
         where: { id: resetRecord.id },
       });
 
-      // Invalidate all existing sessions for security
+      // Invalidate all existing sessions in Redis and DB for security
+      const sessions = await tx.session.findMany({ where: { userId: resetRecord.userId } });
+      for (const s of sessions) {
+        await destroySession(s.token);
+      }
+      
       await tx.session.deleteMany({
         where: { userId: resetRecord.userId },
       });
     });
-
-    // Destroy Redis session
-    await destroySession(resetRecord.userId);
 
     // Audit log
     eventBus.emit('audit:log', {

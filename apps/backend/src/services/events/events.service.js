@@ -107,10 +107,10 @@ class EventsService {
    * @returns {{ data: Array, pagination: object }}
    */
   async list({ status, region, theme, category, schedule, search, page = 1, limit = 12, actorId } = {}) {
-    const cacheKey = `events:list:${JSON.stringify({ status, region, theme, category, schedule, search, page, limit })}`;
+    const hashField = JSON.stringify({ status, region, theme, category, schedule, search, page, limit });
     if (!actorId) { // Only cache general searches, not actor-specific logs
       try {
-        const cached = await redisClient.get(cacheKey);
+        const cached = await redisClient.hGet('events:active', hashField);
         if (cached) return JSON.parse(cached);
       } catch (err) {
         console.warn('[Events] Redis cache get error:', err.message);
@@ -233,7 +233,8 @@ class EventsService {
 
     if (!actorId) {
       try {
-        await redisClient.set(cacheKey, JSON.stringify(result), { EX: 60 * 5 }); // 5 min cache
+        await redisClient.hSet('events:active', hashField, JSON.stringify(result));
+        await redisClient.expire('events:active', 60 * 60); // 1 Hour cache
       } catch (err) {
         console.warn('[Events] Redis cache set error:', err.message);
       }

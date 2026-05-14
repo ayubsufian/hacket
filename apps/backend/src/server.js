@@ -17,6 +17,7 @@ const { connectRedis, disconnectRedis } = require('./config/redis');
 // ── Middleware ───────────────────────────────────────────────────────────
 const errorHandler = require('./middleware/errorHandler');
 const AppError = require('./utils/AppError');
+const activeUsersMetrics = require('./middleware/metrics');
 
 // ── Routes ──────────────────────────────────────────────────────────────
 const authRoutes = require('./routes/auth.routes');
@@ -37,6 +38,7 @@ const certificatesRoutes = require('./routes/certificates.routes');
 const adminRoutes = require('./routes/admin.routes');
 const searchRoutes = require('./routes/search.routes');
 const staffRoutes = require('./routes/staff.routes');
+const storageRoutes = require('./routes/storage.routes');
 
 // ── Initialize Services (registers EventBus listeners) ──────────────────
 require('./services/audit/audit.service');
@@ -66,6 +68,7 @@ app.use(
 );
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(activeUsersMetrics);
 
 // ── Logging ─────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'production') {
@@ -74,8 +77,8 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('combined'));
 }
 
-// ── Static Files (uploads) ──────────────────────────────────────────────
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// ── Blob Storage Router ───────────────────────────────────────────────────
+// Handled via specific secure routes to avoid public data leaks.
 
 // ── Health Check ────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -106,6 +109,7 @@ app.use(`${API_PREFIX}/certificates`, certificatesRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/search`, searchRoutes);
 app.use(`${API_PREFIX}/events/:eventId/staff`, staffRoutes);
+app.use(`${API_PREFIX}/storage`, storageRoutes);
 
 // ── 404 Handler ─────────────────────────────────────────────────────────
 app.use((req, res, next) => {
