@@ -39,3 +39,22 @@ exports.markAllAsRead = catchAsync(async (req, res) => {
     message: 'All notifications marked as read.',
   });
 });
+
+exports.createBroadcast = catchAsync(async (req, res) => {
+  const { title, message, type } = req.body;
+  const { eventId } = req.params;
+  
+  const broadcast = await notificationService.createBroadcast({
+    hackathonId: eventId,
+    title,
+    message,
+    type: type || 'ANNOUNCEMENT',
+    sentBy: req.user.id
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Broadcast announcement queued successfully.',
+    data: { broadcast }
+  });
+});

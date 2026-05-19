@@ -2,6 +2,7 @@ const { Router } = require('express');
 const Joi = require('joi');
 const feedbacksController = require('../controllers/feedbacks.controller');
 const authenticate = require('../middleware/auth');
+const ensureVerified = require('../middleware/ensureVerified');
 const validate = require('../middleware/validate');
 
 const router = Router({ mergeParams: true });
@@ -17,6 +18,7 @@ router.use(authenticate);
 
 router.post(
   '/',
+  ensureVerified,
   validate(ratingSchema),
   feedbacksController.submitRating
 );

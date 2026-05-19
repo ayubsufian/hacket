@@ -185,6 +185,55 @@ class ProfileService {
 
     return membership;
   }
+
+  /**
+   * Get public profile of another user (for team formation/networking).
+   */
+  async getPublicProfile(userId) {
+    const cacheKey = `user:profile:public:${userId}`;
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      console.warn('[Profile] Redis cache get error:', err.message);
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId, isActive: true },
+      select: {
+        id: true,
+        role: true,
+        profile: {
+          select: {
+            firstName: true,
+            lastName: true,
+            bio: true,
+            avatarUrl: true,
+            skills: true,
+            interests: true,
+            university: true,
+            githubUrl: true,
+            linkedinUrl: true,
+            isSeekingTeam: true,
+            city: true,
+            region: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new AppError('User profile not found.', 404);
+    }
+
+    try {
+      await redisClient.setEx(cacheKey, 60 * 60, JSON.stringify(user)); // 1 hour TTL
+    } catch (err) {
+      console.warn('[Profile] Redis cache set error:', err.message);
+    }
+
+    return user;
+  }
 }
 
 module.exports = new ProfileService();

@@ -9,8 +9,9 @@ class SchedulerWorker {
   constructor() {
     this.interval = null;
     this.POLL_RATE_MS = 1000 * 60; // Every 1 minute for demo
-    // Keep track of notified hackathons to avoid duplicate triggers
-    this.notifiedHackathons = new Set();
+    // Track notified hackathons with timestamps (auto-prunes to prevent memory leak)
+    this.notifiedHackathons = new Map(); // hackathonId -> timestamp
+    this.PRUNE_AFTER_MS = 48 * 60 * 60 * 1000; // Prune after 48 hours
   }
 
   start() {
@@ -51,7 +52,7 @@ class SchedulerWorker {
       for (const hackathon of hackathons) {
         if (!this.notifiedHackathons.has(hackathon.id)) {
           console.log(`[Scheduler] Critical deadline detected for: ${hackathon.title}`);
-          this.notifiedHackathons.add(hackathon.id);
+          this.notifiedHackathons.set(hackathon.id, Date.now());
           
           eventBus.emit('deadline:upcoming', {
             hackathonId: hackathon.id,
@@ -59,6 +60,14 @@ class SchedulerWorker {
             deadline: hackathon.submissionDeadline,
             deadlineType: 'SUBMISSION_24HR'
           });
+        }
+      }
+
+      // Auto-prune stale entries to prevent memory leak
+      const cutoff = Date.now() - this.PRUNE_AFTER_MS;
+      for (const [id, timestamp] of this.notifiedHackathons) {
+        if (timestamp < cutoff) {
+          this.notifiedHackathons.delete(id);
         }
       }
     } catch (err) {

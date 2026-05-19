@@ -93,7 +93,8 @@ exports.update = catchAsync(async (req, res) => {
   const hackathon = await eventsService.update(
     req.params.id,
     req.user.id,
-    req.body
+    req.body,
+    req.eventStaffRole || (req.user.role === 'ADMIN' ? 'ADMIN' : 'PRIMARY_ORGANIZER')
   );
 
   res.status(200).json({
@@ -122,5 +123,14 @@ exports.registerParticipant = catchAsync(async (req, res) => {
     success: true,
     message: 'Successfully registered for hackathon.',
     data: { team },
+  });
+});
+
+exports.getParticipants = catchAsync(async (req, res) => {
+  const participants = await eventsService.getParticipants(req.params.id);
+
+  res.status(200).json({
+    success: true,
+    data: { participants },
   });
 });

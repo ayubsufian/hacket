@@ -147,25 +147,49 @@ class NotificationService {
   // ─── Real-Time Transport ──────────────────────────────────────────────
 
   /**
-   * Simulated Email Transport (AF2)
+   * Real SMTP Transport (Production Ready via Nodemailer)
    */
   async _sendRealTimeEmail(userId, email, title, message, retryCount = 0) {
     try {
-      // Simulate 20% network failure rate for demonstration
-      const simulateFailure = Math.random() < 0.2;
-      if (simulateFailure) {
-        throw new Error('SMTP Connection Timeout');
+      const nodemailer = require('nodemailer');
+
+      // 2026 Enterprise Standard: Brevo (Sendinblue) Transactional SMTP
+      // This is explicitly configured for Brevo to handle programmatic bulk bursts safely.
+      // Ensure SMTP_USER and SMTP_PASS are set in your .env file from your Brevo account.
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+        port: process.env.SMTP_PORT || 587,
+        secure: false, // true for 465, false for other ports
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS, 
+        },
+      });
+
+      const mailOptions = {
+        from: `"HackET Platform" <${process.env.SMTP_FROM || 'no-reply@hacket.com'}>`, // Best practice: use a verified custom domain
+        to: email,
+        subject: title,
+        text: message, // Can be updated to `html` to support rich templates
+      };
+
+      // Only attempt to send if credentials exist, otherwise fallback to logging
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        await transporter.sendMail(mailOptions);
+        console.log(`[Email Transport] Successfully delivered to ${email}: ${title}`);
+      } else {
+        console.log(`[Email Transport - MOCK MODE] Successfully delivered to ${email}: ${title} (Configure SMTP_USER/PASS in .env to send real emails)`);
       }
 
-      console.log(`[Email Transport] Successfully delivered to ${email}: ${title}`);
     } catch (err) {
       console.warn(`[Email Transport] Failed to deliver to ${email}. Reason: ${err.message}`);
       
       if (retryCount < 3) {
         const backoffTime = Math.pow(2, retryCount) * 1000;
         console.log(`[Email Transport] Retrying delivery to ${email} in ${backoffTime}ms...`);
+        // We do not await this setTimeout to prevent blocking the current execution thread
         setTimeout(() => {
-          this._sendRealTimeEmail(userId, email, title, message, retryCount + 1);
+          this._sendRealTimeEmail(userId, email, title, message, retryCount + 1).catch(() => {});
         }, backoffTime);
       } else {
         console.error(`[Email Transport] CRITICAL: Delivery to ${email} permanently failed after 3 retries.`);
@@ -176,6 +200,78 @@ class NotificationService {
   // ─── Event Listeners ──────────────────────────────────────────────────
 
   _registerEventListeners() {
+    // Mass Broadcast Pipeline (COMMUNICATIONS/SPONSOR)
+    eventBus.on('notification:broadcast_created', async ({ broadcastId, hackathonId }) => {
+      try {
+        const broadcast = await prisma.notificationBroadcast.findUnique({
+          where: { id: broadcastId }
+        });
+
+        if (!broadcast) return;
+
+        // Fetch all active participants in the hackathon, including their notification preferences
+        const members = await prisma.teamMember.findMany({
+          where: { team: { hackathonId } },
+          select: { 
+            userId: true, 
+            user: { 
+              select: { 
+                email: true,
+                notificationPreference: true // Fetch preferences!
+              } 
+            } 
+          },
+        });
+
+        // Deduplicate users and filter based on preferences
+        const uniqueUsers = new Map();
+        for (const m of members) {
+          uniqueUsers.set(m.userId, {
+            email: m.user.email,
+            wantsEmail: m.user.notificationPreference ? m.user.notificationPreference.email : true // Default to true if no preference record exists
+          });
+        }
+
+        const usersArray = Array.from(uniqueUsers.entries());
+        if (usersArray.length === 0) return;
+
+        // 2026 Standard 1: Bulk Database Insert (In-App notifications always trigger)
+        const notificationPayloads = usersArray.map(([userId]) => ({
+          userId,
+          type: broadcast.type,
+          title: broadcast.title,
+          message: broadcast.message,
+          metadata: { broadcastId, hackathonId },
+          broadcastId,
+          isRead: false
+        }));
+
+        await prisma.notification.createMany({
+          data: notificationPayloads,
+          skipDuplicates: true
+        });
+
+        // 2026 Standard 2: Concurrent Email Dispatch WITH Preference Filtering
+        const emailRecipients = usersArray.filter(([userId, data]) => data.wantsEmail);
+        
+        const CHUNK_SIZE = 50;
+        for (let i = 0; i < emailRecipients.length; i += CHUNK_SIZE) {
+          const chunk = emailRecipients.slice(i, i + CHUNK_SIZE);
+          
+          const emailPromises = chunk.map(([userId, data]) => 
+            this._sendRealTimeEmail(userId, data.email, broadcast.title, broadcast.message)
+              .catch(err => console.error(`[Broadcast] Failed to email ${data.email}:`, err.message))
+          );
+          
+          await Promise.allSettled(emailPromises);
+        }
+
+        console.log(`[Notification Service] Successfully processed broadcast ${broadcastId} for ${usersArray.length} users (${emailRecipients.length} emails sent).`);
+      } catch (err) {
+        console.error('[Notification Service] Failed to process broadcast:', err);
+      }
+    });
+
     // Deadline Upcoming (UC0026)
     eventBus.on('deadline:upcoming', async ({ hackathonId, hackathonTitle, deadline, deadlineType }) => {
       try {
@@ -237,33 +333,54 @@ class NotificationService {
       }
     });
 
-    // Scores updated
-    eventBus.on('scores:updated', async ({ hackathonId }) => {
+    // Scores published (UC0027 - Release Feedback)
+    eventBus.on('scores:published', async ({ hackathonId, title, releasedBy }) => {
       try {
-        const hackathon = await prisma.hackathon.findUnique({
-          where: { id: hackathonId },
-          select: { title: true },
+        console.log(`[Notification] Processing scores:published for ${hackathonId}`);
+        // Create an official broadcast record to piggyback on the dual-delivery pipeline
+        const broadcast = await prisma.notificationBroadcast.create({
+          data: {
+            hackathonId,
+            title: `🏆 Final Scores & Feedback Released!`,
+            message: `The final scores and judge feedback for "${title}" are now available on your dashboard.`,
+            type: 'SCORE_PUBLISHED',
+            sentBy: releasedBy
+          }
         });
 
-        // Notify all participants
-        const members = await prisma.teamMember.findMany({
-          where: { team: { hackathonId } },
-          select: { userId: true },
+        // Trigger the background pipeline exactly like a manual announcement
+        eventBus.emit('notification:broadcast_created', { 
+          broadcastId: broadcast.id, 
+          hackathonId 
         });
 
-        const userIds = [...new Set(members.map((m) => m.userId))];
-
-        await this.broadcast({
-          userIds,
-          type: 'SCORE_PUBLISHED',
-          title: 'Scores Updated',
-          message: `Scores have been updated for "${hackathon?.title}". Check the leaderboard!`,
-          metadata: { hackathonId },
-        });
       } catch (err) {
-        console.error('[Notification] Failed to process scores:updated:', err.message);
+        console.error('[Notification] Failed to process scores:published:', err.message);
       }
     });
+  }
+
+  /**
+   * Create a broadcast announcement for a hackathon.
+   * Dispatches notifications to all active participants in the background.
+   */
+  async createBroadcast({ hackathonId, title, message, type, sentBy }) {
+    // Create the broadcast record
+    const broadcast = await prisma.notificationBroadcast.create({
+      data: {
+        hackathonId,
+        title,
+        message,
+        type,
+        sentBy
+      }
+    });
+
+    // Fire event to allow background worker to generate individual notifications
+    // This prevents the HTTP request from hanging while inserting potentially thousands of rows
+    eventBus.emit('notification:broadcast_created', { broadcastId: broadcast.id, hackathonId });
+
+    return broadcast;
   }
 }
 

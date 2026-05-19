@@ -14,10 +14,14 @@ const morgan = require('morgan');
 const prisma = require('./config/database');
 const { connectRedis, disconnectRedis } = require('./config/redis');
 
+// Initialize background services
+require('./services/email/email.service');
+
 // ── Middleware ───────────────────────────────────────────────────────────
 const errorHandler = require('./middleware/errorHandler');
 const AppError = require('./utils/AppError');
 const activeUsersMetrics = require('./middleware/metrics');
+const { globalLimiter } = require('./middleware/rateLimiter');
 
 // ── Routes ──────────────────────────────────────────────────────────────
 const authRoutes = require('./routes/auth.routes');
@@ -91,6 +95,7 @@ app.get('/health', (req, res) => {
 });
 
 // ── API Routes ──────────────────────────────────────────────────────────
+app.use(API_PREFIX, globalLimiter); // 2026 Standard: Global rate limiting
 app.use(`${API_PREFIX}/auth`, authRoutes);
 app.use(`${API_PREFIX}/profile`, profileRoutes);
 app.use(`${API_PREFIX}/organizations`, organizationRoutes);

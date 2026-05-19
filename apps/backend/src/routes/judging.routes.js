@@ -11,6 +11,7 @@ const Joi = require('joi');
 const judgingController = require('../controllers/judging.controller');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const authorizeEventStaff = require('../middleware/authorizeEventStaff');
 const validate = require('../middleware/validate');
 
 const router = Router();
@@ -24,14 +25,34 @@ const scoreSchema = Joi.object({
   comment: Joi.string().max(1000).allow(null, ''),
 });
 
+const criteriaSchema = Joi.object({
+  name: Joi.string().max(100).required(),
+  description: Joi.string().max(500).allow(null, ''),
+  maxScore: Joi.number().min(1).max(100).default(10),
+  weight: Joi.number().min(0).max(10).default(1.0),
+  sortOrder: Joi.number().integer().default(0),
+});
+
 // ── Routes ──────────────────────────────────────────────────────────────
 
 router.use(authenticate);
 
+// --- Criteria Management (Technical Lead & Co-Organizer) ---
+router.post(
+  '/criteria/:hackathonId',
+  authorizeEventStaff('CO_ORGANIZER', 'TECHNICAL_LEAD'),
+  validate(criteriaSchema),
+  judgingController.addCriteria
+);
+
+router.delete(
+  '/criteria/:id',
+  judgingController.removeCriteria
+);
+
 // Judges submit scores
 router.post(
   '/scores',
-  authorize('JUDGE', 'ADMIN'),
   validate(scoreSchema),
   judgingController.submitScore
 );
@@ -39,14 +60,14 @@ router.post(
 // Admin/Organizer triggers normalization
 router.post(
   '/normalize/:hackathonId',
-  authorize('ORGANIZER', 'ADMIN'),
+  authorizeEventStaff('CO_ORGANIZER', 'TECHNICAL_LEAD'),
   judgingController.normalizeScores
 );
 
 // Organizer triggers feedback release (AF2)
 router.post(
   '/release-feedback/:hackathonId',
-  authorize('ORGANIZER', 'ADMIN'),
+  authorizeEventStaff('CO_ORGANIZER', 'COMMUNICATIONS'),
   judgingController.releaseFeedback
 );
 
@@ -54,9 +75,9 @@ router.post(
 router.get('/leaderboard/:hackathonId', judgingController.getLeaderboard);
 
 // Score breakdown (judges, organizers, and participants)
+// Authorization logic is handled dynamically in the service layer to ensure they belong to the specific event
 router.get(
   '/breakdown/:submissionId',
-  authorize('PARTICIPANT', 'JUDGE', 'ORGANIZER', 'ADMIN'),
   judgingController.getScoreBreakdown
 );
 

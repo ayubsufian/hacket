@@ -13,6 +13,9 @@ const Joi = require('joi');
 const eventsController = require('../controllers/events.controller');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const authorizeEventStaff = require('../middleware/authorizeEventStaff');
+const ensureVerified = require('../middleware/ensureVerified');
+const ensureProfileComplete = require('../middleware/ensureProfileComplete');
 const validate = require('../middleware/validate');
 
 const router = Router();
@@ -61,10 +64,20 @@ router.get('/', eventsController.list);
 router.get('/:id', eventsController.getById);
 router.get('/:id/calendar', eventsController.getCalendar);
 
+// Sponsor, Organizer, & Logistics Data Access
+router.get(
+  '/:id/participants',
+  authenticate,
+  authorizeEventStaff('CO_ORGANIZER', 'SPONSOR', 'TECHNICAL_LEAD', 'LOGISTICS'),
+  eventsController.getParticipants
+);
+
 // Authenticated
 router.post(
   '/',
   authenticate,
+  ensureVerified,
+  ensureProfileComplete,
   authorize('ORGANIZER', 'ADMIN'),
   validate(createSchema),
   eventsController.create
@@ -73,7 +86,9 @@ router.post(
 router.put(
   '/:id',
   authenticate,
-  authorize('ORGANIZER', 'ADMIN'),
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('CO_ORGANIZER', 'TECHNICAL_LEAD', 'COMMUNICATIONS', 'LOGISTICS', 'FINANCE'),
   validate(updateSchema),
   eventsController.update
 );
@@ -81,14 +96,18 @@ router.put(
 router.delete(
   '/:id',
   authenticate,
-  authorize('ORGANIZER', 'ADMIN'),
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('CO_ORGANIZER'), // Only Primary Organizer or Co-Organizer can delete
   eventsController.remove
 );
 
 router.post(
   '/:id/register',
   authenticate,
-  authorize('PARTICIPANT'),
+  ensureVerified,
+  ensureProfileComplete,
+  authorize('PARTICIPANT', 'ORGANIZER'),
   eventsController.registerParticipant
 );
 

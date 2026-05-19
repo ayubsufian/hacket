@@ -1,0 +1,60 @@
+// =============================================================================
+// HackET — Rate Limiting Middleware
+// 2026 Standard: Protect against brute-force, credential stuffing, and DoS.
+// =============================================================================
+
+const rateLimit = require('express-rate-limit');
+
+/**
+ * Global API rate limiter.
+ * Applies to all /api/v1/* routes.
+ */
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200,                  // 200 requests per 15 min per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    status: 'fail',
+    message: 'Too many requests. Please try again later.',
+  },
+});
+
+/**
+ * Strict limiter for authentication endpoints.
+ * Prevents brute-force login, credential stuffing, and registration spam.
+ */
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15,                   // 15 attempts per 15 min per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    status: 'fail',
+    message: 'Too many authentication attempts. Please try again after 15 minutes.',
+  },
+});
+
+/**
+ * Password reset limiter.
+ * Prevents abuse of password reset emails.
+ */
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,                    // 5 reset requests per hour per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    status: 'fail',
+    message: 'Too many password reset attempts. Please try again after 1 hour.',
+  },
+});
+
+module.exports = {
+  globalLimiter,
+  authLimiter,
+  passwordResetLimiter,
+};

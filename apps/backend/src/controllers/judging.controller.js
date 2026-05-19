@@ -5,6 +5,53 @@
 const scoringService = require('../services/judging/scoring.service');
 const leaderboardService = require('../services/judging/leaderboard.service');
 const catchAsync = require('../utils/catchAsync');
+const prisma = require('../config/database');
+const AppError = require('../utils/AppError');
+
+exports.addCriteria = catchAsync(async (req, res) => {
+  const criteria = await prisma.judgingCriteria.create({
+    data: {
+      hackathonId: req.params.hackathonId,
+      ...req.body
+    }
+  });
+
+  res.status(201).json({
+    success: true,
+    data: { criteria }
+  });
+});
+
+exports.removeCriteria = catchAsync(async (req, res) => {
+  const criteria = await prisma.judgingCriteria.findUnique({
+    where: { id: req.params.id },
+    include: { hackathon: true }
+  });
+
+  if (!criteria) {
+    throw new AppError('Criteria not found.', 404);
+  }
+
+  // Authorize dynamically
+  if (req.user.role !== 'ADMIN' && criteria.hackathon.organizerId !== req.user.id) {
+    const staffAssignment = await prisma.staffAssignment.findFirst({
+      where: {
+        userId: req.user.id,
+        hackathonId: criteria.hackathonId,
+        staffRole: { in: ['CO_ORGANIZER', 'TECHNICAL_LEAD'] },
+        isActive: true
+      }
+    });
+
+    if (!staffAssignment) {
+      throw new AppError('Forbidden. You do not have permission to delete judging criteria.', 403);
+    }
+  }
+
+  await prisma.judgingCriteria.delete({ where: { id: req.params.id } });
+
+  res.status(204).send();
+});
 
 exports.submitScore = catchAsync(async (req, res) => {
   const { submissionId, criteriaId, value, comment } = req.body;
@@ -54,7 +101,7 @@ exports.getLeaderboard = catchAsync(async (req, res) => {
 });
 
 exports.releaseFeedback = catchAsync(async (req, res) => {
-  await scoringService.releaseFeedback(req.params.hackathonId);
+  await scoringService.releaseFeedback(req.params.hackathonId, req.user.id);
 
   res.status(200).json({
     success: true,

@@ -33,3 +33,13 @@ exports.getParticipationDetails = catchAsync(async (req, res) => {
     data: { participation: details },
   });
 });
+
+exports.getPublicProfile = catchAsync(async (req, res) => {
+  const { userId } = req.params;
+  const userProfile = await profileService.getPublicProfile(userId);
+
+  res.status(200).json({
+    success: true,
+    data: { user: userProfile },
+  });
+});

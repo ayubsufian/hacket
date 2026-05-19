@@ -37,10 +37,27 @@ class ScoringNormalizationService {
     // Validate: criteria exists and score is within range
     const criteria = await prisma.judgingCriteria.findUnique({
       where: { id: criteriaId },
+      include: { hackathon: true } // Need hackathonId to verify staff role
     });
+    
     if (!criteria) {
       const AppError = require('../../utils/AppError');
       throw new AppError('Scoring criteria unavailable. Please try again.', 404);
+    }
+
+    // 2026 Security: Ensure the user is actually assigned as a JUDGE for this hackathon
+    const staffAssignment = await prisma.staffAssignment.findFirst({
+      where: {
+        userId: judgeId,
+        hackathonId: criteria.hackathonId,
+        staffRole: 'JUDGE',
+        isActive: true
+      }
+    });
+
+    if (!staffAssignment) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Forbidden. You must be assigned as a JUDGE to evaluate submissions for this event.', 403);
     }
     if (value < 0 || value > criteria.maxScore) {
       const AppError = require('../../utils/AppError');
@@ -202,6 +219,56 @@ class ScoringNormalizationService {
       teamName: s.team.name,
       finalScore: Math.round(s.finalScore * 1000) / 1000,
     }));
+  }
+
+  /**
+   * Release final judging feedback and scores to participants.
+   * This makes feedback visible and sends a broadcast notification.
+   * @param {string} hackathonId 
+   * @param {string} releasedByUserId
+   */
+  async releaseFeedback(hackathonId, releasedByUserId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId }
+    });
+
+    if (!hackathon) {
+      throw new AppError('Hackathon not found.', 404);
+    }
+
+    if (hackathon.status !== 'JUDGING' && hackathon.status !== 'COMPLETED') {
+      throw new AppError('Feedback can only be released when the hackathon is in the Judging or Completed phase.', 400);
+    }
+
+    // 1. Update all submissions to make feedback visible
+    await prisma.submission.updateMany({
+      where: { hackathonId },
+      data: { isFeedbackVisible: true }
+    });
+
+    // 2. Mark hackathon as COMPLETED
+    if (hackathon.status !== 'COMPLETED') {
+      await prisma.hackathon.update({
+        where: { id: hackathonId },
+        data: { status: 'COMPLETED' }
+      });
+    }
+
+    // 3. Emit event to trigger the broadcast notification pipeline we just built!
+    eventBus.emit('scores:published', { 
+      hackathonId, 
+      title: hackathon.title,
+      releasedBy: releasedByUserId 
+    });
+
+    // Invalidate caches
+    try {
+      await redisClient.del(`leaderboard:${hackathonId}`);
+    } catch (err) {
+      console.warn('[Scoring] Redis cache invalidation error:', err.message);
+    }
+
+    return true;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -406,33 +473,7 @@ class ScoringNormalizationService {
     return { breakdown: breakdownArray, message };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // PUBLIC: Release Feedback
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * @param {string} hackathonId
-   */
-  async releaseFeedback(hackathonId) {
-    const hackathon = await prisma.hackathon.findUnique({
-      where: { id: hackathonId }
-    });
-
-    if (!hackathon) {
-      const AppError = require('../../utils/AppError');
-      throw new AppError('Hackathon not found.', 404);
-    }
-
-    if (hackathon.status !== 'COMPLETED') {
-      const AppError = require('../../utils/AppError');
-      throw new AppError('Feedback release is locked until all final results are published.', 403);
-    }
-
-    await prisma.hackathon.update({
-      where: { id: hackathonId },
-      data: { feedbackVisibility: 'PUBLIC', feedbackReleaseAt: new Date() }
-    });
-  }
 }
 
 module.exports = new ScoringNormalizationService();
+

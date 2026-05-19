@@ -65,7 +65,12 @@ async function setSession(token, sessionData) {
   }
   
   await redisClient.hSet(key, hashData);
-  await redisClient.expire(key, SESSION_TTL_SECONDS);
+
+  // 2026 Standard: Participants get extended 7-day sessions, other roles get 30-min sliding window
+  const ttl = sessionData.role === 'PARTICIPANT'
+    ? PARTICIPANT_TTL_SECONDS
+    : SESSION_TTL_SECONDS;
+  await redisClient.expire(key, ttl);
 }
 
 /**
@@ -80,7 +85,11 @@ async function getSession(token) {
   if (!data || Object.keys(data).length === 0) return null;
 
   // Refresh TTL on every access (sliding window)
-  await redisClient.expire(key, SESSION_TTL_SECONDS);
+  // Use role-aware TTL
+  const ttl = data.role === 'PARTICIPANT'
+    ? PARTICIPANT_TTL_SECONDS
+    : SESSION_TTL_SECONDS;
+  await redisClient.expire(key, ttl);
   return data;
 }
 
@@ -100,4 +109,5 @@ module.exports = {
   getSession,
   destroySession,
   SESSION_TTL_SECONDS,
+  PARTICIPANT_TTL_SECONDS,
 };

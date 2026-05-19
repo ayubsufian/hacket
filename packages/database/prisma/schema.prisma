@@ -21,6 +21,12 @@ datasource db {
 // ENUMS
 // =============================================================================
 
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  GITHUB
+}
+
 enum UserRole {
   PARTICIPANT
   ORGANIZER
@@ -91,8 +97,10 @@ enum AuditAction {
 }
 
 enum StaffRole {
+  CO_ORGANIZER
   JUDGE
   MENTOR
+  SPONSOR
   TECHNICAL_LEAD
   LOGISTICS
   COMMUNICATIONS
@@ -120,6 +128,7 @@ enum JudgingPhase {
 enum VerificationStatus {
   UNVERIFIED
   PENDING
+  UNDER_REVIEW
   VERIFIED
   REJECTED
 }
@@ -215,10 +224,14 @@ enum OrgMemberRole {
 model User {
   id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email              String             @unique @db.VarChar(255)
-  password           String
+  password           String?
+  authProvider       AuthProvider       @default(LOCAL) @map("auth_provider")
+  providerId         String?            @map("provider_id")
   role               UserRole           @default(PARTICIPANT)
   isActive           Boolean            @default(true) @map("is_active")
   verificationStatus VerificationStatus @default(UNVERIFIED) @map("verification_status")
+  suspendedAt        DateTime?          @map("suspended_at")
+  suspensionReason   String?            @map("suspension_reason")
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 
@@ -242,6 +255,7 @@ model User {
   discussionComments       DiscussionComment[]
   sessions                 Session[]
   passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
   registrations            Registration[]
   eventFeedbacks           EventFeedback[]
   notificationPreference   UserNotificationPreference?
@@ -263,11 +277,6 @@ model User {
   archiveRecordsArchived      ArchiveRecord[]              @relation("ArchiveRecordArchiver")
   discussionsArchived         Discussion[]                 @relation("DiscussionArchiver")
   commentsArchived            DiscussionComment[]          @relation("DiscussionCommentArchiver")
-
-  // Suspension metadata for UC0030
-  suspendedAt      DateTime? @map("suspended_at")
-  suspensionReason String?   @map("suspension_reason")
-
   @@map("users")
 }
 
@@ -1264,6 +1273,25 @@ model PasswordResetToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("password_reset_tokens")
+}
+
+// =============================================================================
+// EMAIL VERIFICATION (UC0001 Account Verification)
+// =============================================================================
+
+model EmailVerificationToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token     String   @unique
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
 }
 
 // =============================================================================

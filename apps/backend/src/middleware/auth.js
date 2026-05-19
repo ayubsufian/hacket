@@ -82,30 +82,40 @@ const authenticate = async (req, res, next) => {
         data: { lastActiveAt: new Date() },
       });
     } else {
-      // Refresh DB lastActiveAt in background if session exists in Redis
-      try {
-        const dbSession = await prisma.session.findFirst({
-          where: { userId: decoded.id, token },
-        });
-        if (dbSession) {
-          await prisma.session.update({
-            where: { id: dbSession.id },
-            data: { lastActiveAt: new Date() },
-          });
-        }
-      } catch (err) {
-        console.error(
-          '[Auth] Failed to update DB session lastActiveAt:',
-          err.message,
-        );
-      }
+      // Cache HIT: getSession() already extended the Redis TTL.
+      // 2026 Standard: Never block the main thread with a DB write on every request.
+      // Fire-and-forget event to update the DB lastActiveAt (throttled internally by listeners if needed).
+      const eventBus = require('../utils/eventBus');
+      eventBus.emit('session:active', { userId: decoded.id, token });
     }
 
-    // 4. Attach user info to request
+    // 4. Verify user is not suspended (2026 Security: Defense-in-depth)
+    // On Redis cache miss path, we already hit the DB. On cache hit, we do a
+    // lightweight check periodically. For maximum security, always verify.
+    const liveUser = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { isActive: true, role: true },
+    });
+
+    if (!liveUser) {
+      return next(new AppError('User account no longer exists.', 401));
+    }
+
+    if (!liveUser.isActive) {
+      // Immediately destroy the session
+      const { destroySession: destroy } = require('../config/redis');
+      await destroy(token);
+      return next(
+        new AppError('This account has been suspended. Please contact support.', 403)
+      );
+    }
+
+    // 5. Attach user info to request (use live role from DB, not stale JWT)
     req.user = {
       id: decoded.id,
       email: decoded.email,
-      role: decoded.role,
+      role: liveUser.role,
+      verificationStatus: decoded.verificationStatus,
     };
 
     next();

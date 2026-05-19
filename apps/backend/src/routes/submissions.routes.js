@@ -12,6 +12,8 @@ const multer = require('multer');
 const path = require('path');
 const submissionsController = require('../controllers/submissions.controller');
 const authenticate = require('../middleware/auth');
+const ensureVerified = require('../middleware/ensureVerified');
+const ensureProfileComplete = require('../middleware/ensureProfileComplete');
 const validate = require('../middleware/validate');
 const AppError = require('../utils/AppError');
 
@@ -48,8 +50,8 @@ const upsertSchema = Joi.object({
 
 router.use(authenticate);
 
-router.post('/', uploadMiddleware, validate(upsertSchema), submissionsController.upsert);
-router.post('/:id/submit', submissionsController.submit);
+router.post('/', ensureVerified, ensureProfileComplete, uploadMiddleware, validate(upsertSchema), submissionsController.upsert);
+router.post('/:id/submit', ensureVerified, ensureProfileComplete, submissionsController.submit);
 router.get('/:id', submissionsController.getById);
 router.get('/hackathon/:hackathonId', submissionsController.listByHackathon);
 

@@ -2,19 +2,10 @@ const { Router } = require('express');
 const Joi = require('joi');
 const mentorshipController = require('../controllers/mentorship.controller');
 const authenticate = require('../middleware/auth');
+const authorize = require('../middleware/authorize');
 const validate = require('../middleware/validate');
-const AppError = require('../utils/AppError');
 
 const router = Router();
-
-const restrictTo = (...roles) => {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return next(new AppError('You do not have permission to perform this action', 403));
-    }
-    next();
-  };
-};
 
 const requestSchema = Joi.object({
   mentorId: Joi.string().uuid().required(),
@@ -28,18 +19,44 @@ const logSchema = Joi.object({
   notes: Joi.string().required(),
 });
 
+const respondSchema = Joi.object({
+  status: Joi.string().valid('ACCEPTED', 'DECLINED').required(),
+});
+
 router.use(authenticate);
 
+// ── Participant Actions ─────────────────────────────────────────────────
 router.post(
   '/requests',
-  restrictTo('PARTICIPANT'),
+  authorize('PARTICIPANT'),
   validate(requestSchema),
   mentorshipController.requestMentor
 );
 
+// ── Mentor Actions ──────────────────────────────────────────────────────
+
+// View incoming mentor requests
+router.get(
+  '/requests/incoming',
+  mentorshipController.getIncomingRequests
+);
+
+// Accept or decline a mentor request
+router.patch(
+  '/requests/:requestId/respond',
+  validate(respondSchema),
+  mentorshipController.respondToRequest
+);
+
+// View assigned teams
+router.get(
+  '/assignments',
+  mentorshipController.getAssignments
+);
+
+// Log an interaction with a team
 router.post(
   '/interactions',
-  restrictTo('MENTOR'),
   validate(logSchema),
   mentorshipController.logInteraction
 );

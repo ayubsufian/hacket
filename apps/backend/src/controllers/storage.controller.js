@@ -1,13 +1,30 @@
 const fs = require('fs');
+const path = require('path');
 const storageService = require('../services/storage/storage.service');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
+
+/**
+ * 2026 Security: Validate path segments to prevent path traversal attacks
+ */
+const validatePathSegment = (segment) => {
+  if (!segment || segment.includes('..') || segment.includes('/') || segment.includes('\\')) {
+    return false;
+  }
+  return true;
+};
 
 /**
  * Serves a public blob.
  */
 exports.getPublicBlob = catchAsync(async (req, res, next) => {
   const { folder, entityId, filename } = req.params;
+
+  // 2026 Security: Prevent path traversal
+  if (!validatePathSegment(folder) || !validatePathSegment(entityId) || !validatePathSegment(filename)) {
+    return next(new AppError('Invalid file path.', 400));
+  }
+
   const storageKey = `/${folder}/${entityId}/${filename}`;
   const absolutePath = storageService.getAbsolutePath(storageKey);
 
@@ -22,10 +39,13 @@ exports.getPublicBlob = catchAsync(async (req, res, next) => {
  * Serves an authenticated blob (e.g. Technical Docs).
  */
 exports.getAuthenticatedBlob = catchAsync(async (req, res, next) => {
-  // At this point, the authenticate middleware has already run.
-  // We could add extra checks here to ensure the user is an admin/judge/organizer.
-  // For now, we enforce Authenticated Only.
   const { folder, entityId, filename } = req.params;
+
+  // 2026 Security: Prevent path traversal
+  if (!validatePathSegment(folder) || !validatePathSegment(entityId) || !validatePathSegment(filename)) {
+    return next(new AppError('Invalid file path.', 400));
+  }
+
   const storageKey = `/${folder}/${entityId}/${filename}`;
   const absolutePath = storageService.getAbsolutePath(storageKey);
 

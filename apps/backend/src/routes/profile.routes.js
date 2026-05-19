@@ -41,5 +41,6 @@ router.use(authenticate); // Protect all profile routes
 router.get('/me', profileController.getMe);
 router.patch('/me', validate(updateProfileSchema), profileController.updateProfile);
 router.get('/participation/:hackathonId', profileController.getParticipationDetails);
+router.get('/:userId', profileController.getPublicProfile);
 
 module.exports = router;

@@ -96,6 +96,46 @@ class EventsService {
   }
 
   /**
+   * Get all registered participants for a hackathon.
+   * Used by Sponsors for recruiting and Organizers for management.
+   * @param {string} hackathonId 
+   * @returns {array}
+   */
+  async getParticipants(hackathonId) {
+    const members = await prisma.teamMember.findMany({
+      where: { team: { hackathonId } },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: {
+                firstName: true,
+                lastName: true,
+                skills: true,
+                githubUrl: true,
+                linkedinUrl: true,
+                portfolioUrl: true,
+                resumeUrl: true
+              }
+            }
+          }
+        },
+        team: {
+          select: { id: true, name: true }
+        }
+      }
+    });
+
+    return members.map(m => ({
+      ...m.user,
+      team: m.team,
+      role: m.role
+    }));
+  }
+
+  /**
    * List hackathons with filtering & pagination.
    * @param {object} [filters]
    * @param {string} [filters.status]
@@ -248,9 +288,10 @@ class EventsService {
    * @param {string} hackathonId
    * @param {string} organizerId - For permission check
    * @param {object} data
+   * @param {string} staffRole - Role of the staff member performing the update
    * @returns {object}
    */
-  async update(hackathonId, organizerId, data) {
+  async update(hackathonId, organizerId, data, staffRole) {
     const hackathon = await prisma.hackathon.findUnique({
       where: { id: hackathonId },
     });
@@ -259,17 +300,39 @@ class EventsService {
       throw new AppError('Hackathon not found.', 404);
     }
 
-    if (hackathon.organizerId !== organizerId) {
-      throw new AppError('You can only edit hackathons you organize.', 403);
+    // 2026 Enterprise Standard: Field-Level Role-Based Access Control (RBAC)
+    let allowedFields = [];
+    if (staffRole === 'ADMIN' || staffRole === 'PRIMARY_ORGANIZER' || staffRole === 'CO_ORGANIZER') {
+      allowedFields = Object.keys(data); // Can edit everything
+    } else if (staffRole === 'COMMUNICATIONS') {
+      allowedFields = ['title', 'titleAm', 'description', 'descriptionAm', 'coverImageUrl', 'websiteUrl', 'contactEmail', 'tags'];
+    } else if (staffRole === 'TECHNICAL_LEAD') {
+      allowedFields = ['judgingStart', 'judgingEnd', 'rules', 'rulesAm', 'submissionDeadline'];
+    } else if (staffRole === 'LOGISTICS') {
+      allowedFields = ['eventStart', 'eventEnd', 'venue', 'region', 'isVirtual'];
+    } else if (staffRole === 'FINANCE') {
+      allowedFields = ['prizes'];
     }
 
-    const { tags, overrideConflict, ...updateData } = data;
+    // Filter incoming data strictly to allowed fields
+    const filteredData = Object.keys(data)
+      .filter(key => allowedFields.includes(key))
+      .reduce((obj, key) => {
+        obj[key] = data[key];
+        return obj;
+      }, {});
+
+    if (Object.keys(filteredData).length === 0) {
+      throw new AppError(`Forbidden. As a ${staffRole}, you do not have permission to modify the provided fields.`, 403);
+    }
+
+    const { tags, overrideConflict, ...updateData } = filteredData;
 
     // Merge existing hackathon with incoming updates to validate publishing state
     const mergedData = { ...hackathon, ...updateData };
     this._validatePublishingFields(mergedData);
 
-    // AF3: Check duplicate title (excluding current hackathon)
+    // Check duplicate title (excluding current hackathon)
     if (updateData.title) {
       const isConflictOverridden = await this._checkDuplicateTitle(updateData.title, overrideConflict, hackathonId);
       if (isConflictOverridden) {
@@ -338,10 +401,6 @@ class EventsService {
       throw new AppError('Hackathon not found.', 404);
     }
 
-    if (hackathon.organizerId !== organizerId) {
-      throw new AppError('You can only delete hackathons you organize.', 403);
-    }
-
     await prisma.hackathon.delete({ where: { id: hackathonId } });
 
     eventBus.emit('audit:log', {
@@ -383,6 +442,24 @@ class EventsService {
 
     if (existing) {
       throw new AppError('You are already registered for this hackathon.', 409);
+    }
+
+    // Security & Conflict of Interest Check (2026 Standard)
+    // A user cannot compete in a hackathon if they are the Lead Organizer, Judge, or Mentor.
+    if (hackathon.organizerId === userId) {
+      throw new AppError('Conflict of Interest: You cannot register as a participant in a hackathon that you are organizing.', 403);
+    }
+
+    const staffAssignment = await prisma.staffAssignment.findFirst({
+      where: {
+        userId,
+        hackathonId,
+        isActive: true
+      }
+    });
+
+    if (staffAssignment) {
+      throw new AppError(`You cannot register as a participant because you are assigned as a ${staffAssignment.staffRole} for this hackathon.`, 403);
     }
 
     // Check max participants

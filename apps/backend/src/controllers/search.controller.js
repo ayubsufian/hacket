@@ -54,9 +54,11 @@ exports.searchMetadata = catchAsync(async (req, res) => {
         const data = await fs.readFile(filePath, 'utf-8');
         const parsed = JSON.parse(data);
         
-        // Regex case-insensitive match
-        const regex = new RegExp(query, 'i');
-        if (regex.test(parsed.title) || regex.test(parsed.description)) {
+        // Safe case-insensitive match (no RegExp to prevent ReDoS)
+        const lowerQuery = query.toLowerCase();
+        const titleMatch = (parsed.title || '').toLowerCase().includes(lowerQuery);
+        const descMatch = (parsed.description || '').toLowerCase().includes(lowerQuery);
+        if (titleMatch || descMatch) {
           results.push({
             id: parsed.id,
             title: parsed.title,
