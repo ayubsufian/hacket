@@ -20,7 +20,7 @@ export default function TeamsPage() {
     try {
       setLoading(true); setError(null)
       const res = await getTeam('mock-team-id') // user's mocked team
-      setTeam(res ?? null)
+      setTeam(res)
     } catch (err: any) {
       if (err.status === 404) setTeam(null)
       else setError(err.message || 'Failed to load team data.')
@@ -124,7 +124,7 @@ export default function TeamsPage() {
               </div>
               <form onSubmit={async e => { e.preventDefault(); setActionLoading(true); await updateTeam(team.id, { name: team.name }); await loadTeam(); setActionLoading(false) }} className="flex gap-2">
                 <input value={form.repoUrl} onChange={e => setForm({ ...form, repoUrl: e.target.value })} className="input-field min-w-[220px]" placeholder="https://github.com/..." />
-                <button type="submit" disabled={actionLoading} className="btn-secondary">{actionLoading ? <Loader2 size={16} className="animate-spin" /> : 'Save repo'}</button>
+                <button type="submit" disabled={actionLoading} className="btn-secondary">{actionLoading ? <Loader2 size={16} className="animate-spin" /> : 'Save'}</button>
               </form>
             </div>
           </div>

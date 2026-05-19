@@ -44,3 +44,10 @@ export async function logout() {
   })
   authTokenStore.clear()
 }
+
+export async function requestPasswordReset(input: { email: string }) {
+  return apiRequest<null>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}

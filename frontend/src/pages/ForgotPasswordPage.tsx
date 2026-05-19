@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from 'react'
-import { ArrowLeft, Loader2, Mail } from 'lucide-react'
+import { ArrowLeft, Loader2, Mail, CheckCircle2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { requestPasswordReset } from '../api/auth'
 import { useToast } from '../contexts/ToastContext'
@@ -38,63 +38,98 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_12%_16%,rgba(99,102,241,0.2),transparent_35%),radial-gradient(circle_at_85%_10%,rgba(34,211,238,0.2),transparent_30%),linear-gradient(180deg,#f8fbff_0%,#f4f8ff_45%,#f5f9ff_100%)] px-4 py-20 sm:px-6">
-      <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(148,163,184,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.16)_1px,transparent_1px)] [background-size:34px_34px]" />
-      <div className="relative mx-auto w-full max-w-lg">
-        <Link to="/login" className="mb-7 inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
-          <ArrowLeft size={16} /> Back to login
-        </Link>
-
-        <div className="card-elevated border border-white/75 bg-white/86 p-8 backdrop-blur-xl sm:p-10">
-          <p className="section-title text-indigo-600">Account recovery</p>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Forgot your password?</h1>
-          <p className="mt-3 text-sm leading-relaxed text-slate-500">
-            Enter the email you used with HackET. If password reset is enabled, we will send a secure recovery link.
-          </p>
-
-          {submitted && (
-            <div className="alert-success mt-6">
-              Request received. Check your inbox and spam folder for next steps.
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header */}
+      <header className="px-4 py-4 sm:px-6 lg:px-8">
+        <div className="max-w-md mx-auto lg:max-w-7xl flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-2 text-gray-900 hover:text-gray-700">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-white font-bold text-sm">
+              H
             </div>
+            <span className="font-semibold tracking-tight">HackET</span>
+          </Link>
+          <Link to="/login" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+            <ArrowLeft size={16} />
+            Back to login
+          </Link>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 flex items-center justify-center px-4 py-8 sm:px-6">
+        <div className="w-full max-w-sm">
+          {/* Title */}
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Reset password</h1>
+            <p className="text-sm text-gray-500">
+              Enter your email and we&apos;ll send you instructions.
+            </p>
+          </div>
+
+          {submitted ? (
+            <div className="text-center space-y-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 text-emerald-600">
+                <CheckCircle2 size={24} />
+              </div>
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <p className="text-sm text-emerald-800">
+                  Check your inbox for reset instructions.
+                </p>
+              </div>
+              <Link
+                to="/login"
+                className="inline-block w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition-colors min-h-[44px] touch-manipulation"
+              >
+                Back to login
+              </Link>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Email
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    id="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[44px] touch-manipulation"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  'Send instructions'
+                )}
+              </button>
+            </form>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Email address</label>
-              <div className="relative">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                  <Mail size={16} />
-                </div>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="input-field pl-10"
-                />
-              </div>
-            </div>
-
-            <button type="submit" disabled={loading} className="btn-primary h-11 w-full text-base">
-              {loading ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 size={18} className="animate-spin" /> Sending request...
-                </span>
-              ) : (
-                'Send reset request'
-              )}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Remembered your password?{' '}
-            <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
-              Sign in
-            </Link>
-          </p>
+          {!submitted && (
+            <p className="mt-6 text-center text-sm text-gray-500">
+              Remember your password?{' '}
+              <Link to="/login" className="font-medium text-emerald-600 hover:text-emerald-700">
+                Sign in
+              </Link>
+            </p>
+          )}
         </div>
-      </div>
+      </main>
     </div>
   )
 }
