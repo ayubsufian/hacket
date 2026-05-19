@@ -36,9 +36,9 @@ exports.register = catchAsync(async (req, res) => {
 });
 
 exports.verifyEmail = catchAsync(async (req, res) => {
-  const { token } = req.body;
+  const { email, otp } = req.body;
   
-  const result = await authService.verifyEmail(token);
+  const result = await authService.verifyEmail(email, otp);
   
   res.status(200).json({
     success: true,
@@ -208,11 +208,11 @@ exports.logout = catchAsync(async (req, res) => {
 });
 
 exports.getMe = catchAsync(async (req, res) => {
-  const user = await authService.getMe(req.user.id);
+  const authContext = await authService.getMe(req.user.id);
 
   res.status(200).json({
     success: true,
-    data: { user },
+    data: authContext,
   });
 });
 
@@ -228,9 +228,9 @@ exports.forgotPassword = catchAsync(async (req, res) => {
 });
 
 exports.resetPassword = catchAsync(async (req, res) => {
-  const { token, newPassword } = req.body;
+  const { email, otp, newPassword } = req.body;
 
-  const result = await authService.resetPassword(token, newPassword);
+  const result = await authService.resetPassword(email, otp, newPassword);
 
   res.status(200).json({
     success: true,
@@ -239,11 +239,19 @@ exports.resetPassword = catchAsync(async (req, res) => {
 });
 
 exports.extendSession = catchAsync(async (req, res) => {
-  // The 'authenticate' middleware has already handled extending the Redis TTL
-  // and updating 'lastActiveAt' in the database.
+  const result = await authService.extendSession(
+    req.user.id,
+    req.authToken,
+    {
+      userAgent: req.headers['user-agent'],
+      ip: req.ip,
+    },
+  );
+
   res.status(200).json({
     success: true,
     message: 'Session extended successfully.',
+    data: result,
   });
 });
 
@@ -263,6 +271,9 @@ exports.requestOrganizerUpgrade = catchAsync(async (req, res) => {
   const result = await authService.requestOrganizerUpgrade(req.user.id, {
     organizationName,
     representativeName,
+    currentToken: req.authToken,
+    userAgent: req.headers['user-agent'],
+    ip: req.ip,
   });
 
   res.status(200).json({

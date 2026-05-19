@@ -1265,6 +1265,7 @@ model PasswordResetToken {
   token     String   @unique
   userId    String   @map("user_id") @db.Uuid
   expiresAt DateTime @map("expires_at")
+  attempts  Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
@@ -1284,6 +1285,7 @@ model EmailVerificationToken {
   token     String   @unique
   userId    String   @map("user_id") @db.Uuid
   expiresAt DateTime @map("expires_at")
+  attempts  Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations

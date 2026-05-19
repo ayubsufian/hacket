@@ -12,12 +12,12 @@ class ProfileService {
    * Get user profile along with current submissions and past participation.
    */
   async getProfileWithHistory(userId) {
-    const cacheKey = `user:profile:${userId}`;
+    const cacheKey = `user:profile:v2:${userId}`;
     try {
       const cached = await redisClient.hGetAll(cacheKey);
       if (cached && Object.keys(cached).length > 0) {
         return {
-          user: JSON.parse(cached.user),
+          profile: JSON.parse(cached.profile),
           currentSubmissions: JSON.parse(cached.currentSubmissions),
           pastParticipation: JSON.parse(cached.pastParticipation),
         };
@@ -28,12 +28,37 @@ class ProfileService {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        profile: true,
+      select: {
+        profile: {
+          select: {
+            id: true,
+            userId: true,
+            firstName: true,
+            lastName: true,
+            bio: true,
+            avatarUrl: true,
+            phone: true,
+            university: true,
+            graduationYear: true,
+            skills: true,
+            interests: true,
+            githubUrl: true,
+            linkedinUrl: true,
+            preferredLocale: true,
+            city: true,
+            region: true,
+            representativeName: true,
+            dateOfBirth: true,
+            isSeekingTeam: true,
+            mentorMaxDailyInteractions: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
       },
     });
 
-    if (!user) {
+    if (!user || !user.profile) {
       throw new AppError('User not found.', 404);
     }
 
@@ -91,18 +116,15 @@ class ProfileService {
       }
     });
 
-    // Remove sensitive data
-    const { password, ...safeUser } = user;
-
     const result = {
-      user: safeUser,
+      profile: user.profile,
       currentSubmissions,
       pastParticipation,
     };
 
     try {
       await redisClient.hSet(cacheKey, {
-        user: JSON.stringify(safeUser),
+        profile: JSON.stringify(user.profile),
         currentSubmissions: JSON.stringify(currentSubmissions),
         pastParticipation: JSON.stringify(pastParticipation),
       });
@@ -139,6 +161,7 @@ class ProfileService {
     });
 
     try {
+      await redisClient.del(`user:profile:v2:${userId}`);
       await redisClient.del(`user:profile:${userId}`);
     } catch (err) {
       console.warn('[Profile] Redis cache del error:', err.message);

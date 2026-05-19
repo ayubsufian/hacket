@@ -79,7 +79,9 @@ const githubOrganizerOAuthSchema = githubOAuthSchema.keys({
 });
 
 const verifyEmailSchema = Joi.object({
-  token: Joi.string().required(),
+  email: Joi.string().email().required(),
+  otp: Joi.string().pattern(/^\d{6}$/).required()
+    .messages({ 'string.pattern.base': 'OTP must be a 6-digit code.' }),
 });
 
 const resendVerificationSchema = Joi.object({
@@ -91,7 +93,9 @@ const forgotPasswordSchema = Joi.object({
 });
 
 const resetPasswordSchema = Joi.object({
-  token: Joi.string().required(),
+  email: Joi.string().email().required(),
+  otp: Joi.string().pattern(/^\d{6}$/).required()
+    .messages({ 'string.pattern.base': 'OTP must be a 6-digit code.' }),
   newPassword: Joi.string()
     .min(8)
     .max(128)

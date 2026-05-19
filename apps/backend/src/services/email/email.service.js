@@ -25,10 +25,9 @@ class EmailService {
   }
 
   /**
-   * Send Email Verification Link
+   * Send Email Verification OTP
    */
-  async sendVerificationEmail(to, token, firstName = '', role = 'PARTICIPANT') {
-    const verifyUrl = `${this.frontendUrl}/verify-email?token=${token}`;
+  async sendVerificationEmail(to, otp, firstName = '', role = 'PARTICIPANT') {
     const isOrganizer = role === 'ORGANIZER';
     const welcomeMessage = isOrganizer
       ? 'Welcome to HackET! Please confirm your email address so we can continue reviewing your organizer account and organization details.'
@@ -44,9 +43,9 @@ class EmailService {
           <p>Hi ${firstName || 'Developer'},</p>
           <p>${welcomeMessage}</p>
           <div style="text-align: center; margin: 32px 0;">
-            <a href="${verifyUrl}" style="background-color: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Verify Email</a>
+            <div style="display: inline-block; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 28px; color: #0f172a; font-size: 32px; font-weight: 700; letter-spacing: 8px;">${otp}</div>
           </div>
-          <p style="font-size: 14px; color: #64748b;">This link will expire in 24 hours.</p>
+          <p style="font-size: 14px; color: #64748b;">Enter this 6-digit code in HackET. It expires in 10 minutes and can only be used once.</p>
           <p style="font-size: 14px; color: #64748b; margin-top: 24px; padding-top: 24px; border-top: 1px solid #eee;">
             If you didn't create an account, you can safely ignore this email.
           </p>
@@ -64,7 +63,7 @@ class EmailService {
         });
         console.log(`[EmailService] Verification email sent to ${to}. MessageId: ${info.messageId}`);
       } else {
-        console.log(`[EmailService - MOCK MODE] Verification email generated for ${to}. URL: ${verifyUrl}`);
+        console.log(`[EmailService - MOCK MODE] Verification email generated for ${to}. OTP: ${otp}`);
       }
     } catch (error) {
       console.error(`[EmailService] Failed to send verification email to ${to}:`, error.message);
@@ -73,11 +72,9 @@ class EmailService {
   }
 
   /**
-   * Send Password Reset Link
+   * Send Password Reset OTP
    */
-  async sendPasswordResetEmail(to, token, firstName = '') {
-    const resetUrl = `${this.frontendUrl}/reset-password?token=${token}`;
-
+  async sendPasswordResetEmail(to, otp, firstName = '') {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
         <div style="background-color: #0f172a; padding: 24px; text-align: center;">
@@ -86,11 +83,11 @@ class EmailService {
         <div style="padding: 32px; background-color: #ffffff; color: #334155;">
           <h2 style="margin-top: 0; color: #0f172a;">Password Reset Request</h2>
           <p>Hi ${firstName || 'Developer'},</p>
-          <p>We received a request to reset the password for your HackET account. Click the button below to choose a new password.</p>
+          <p>We received a request to reset the password for your HackET account. Enter this code in HackET to choose a new password.</p>
           <div style="text-align: center; margin: 32px 0;">
-            <a href="${resetUrl}" style="background-color: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Reset Password</a>
+            <div style="display: inline-block; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 28px; color: #0f172a; font-size: 32px; font-weight: 700; letter-spacing: 8px;">${otp}</div>
           </div>
-          <p style="font-size: 14px; color: #64748b;">This link will expire in 1 hour.</p>
+          <p style="font-size: 14px; color: #64748b;">This code expires in 10 minutes and can only be used once.</p>
           <p style="font-size: 14px; color: #64748b; margin-top: 24px; padding-top: 24px; border-top: 1px solid #eee;">
             If you didn't request a password reset, your account is safe and you can ignore this email.
           </p>
@@ -108,7 +105,7 @@ class EmailService {
         });
         console.log(`[EmailService] Password reset email sent to ${to}. MessageId: ${info.messageId}`);
       } else {
-        console.log(`[EmailService - MOCK MODE] Password reset email generated for ${to}. URL: ${resetUrl}`);
+        console.log(`[EmailService - MOCK MODE] Password reset email generated for ${to}. OTP: ${otp}`);
       }
     } catch (error) {
       console.error(`[EmailService] Failed to send password reset email to ${to}:`, error.message);
@@ -332,12 +329,12 @@ const emailService = new EmailService();
 // Register background event listeners
 const eventBus = require('../../utils/eventBus');
 
-eventBus.on('email:verification_requested', async ({ email, token, firstName, role }) => {
-  await emailService.sendVerificationEmail(email, token, firstName, role);
+eventBus.on('email:verification_requested', async ({ email, otp, firstName, role }) => {
+  await emailService.sendVerificationEmail(email, otp, firstName, role);
 });
 
-eventBus.on('email:password_reset_requested', async ({ email, token, firstName }) => {
-  await emailService.sendPasswordResetEmail(email, token, firstName);
+eventBus.on('email:password_reset_requested', async ({ email, otp, firstName }) => {
+  await emailService.sendPasswordResetEmail(email, otp, firstName);
 });
 
 eventBus.on('email:staff_invitation', async ({ email, token, hackathonTitle, staffRole }) => {

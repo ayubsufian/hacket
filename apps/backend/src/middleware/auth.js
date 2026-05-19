@@ -73,6 +73,7 @@ const authenticate = async (req, res, next) => {
       }
       // Restore Redis session for sliding window
       await setSession(token, {
+        id: decoded.id,
         role: decoded.role,
         email: decoded.email,
       });
@@ -94,7 +95,7 @@ const authenticate = async (req, res, next) => {
     // lightweight check periodically. For maximum security, always verify.
     const liveUser = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { isActive: true, role: true },
+      select: { isActive: true, role: true, verificationStatus: true },
     });
 
     if (!liveUser) {
@@ -115,8 +116,9 @@ const authenticate = async (req, res, next) => {
       id: decoded.id,
       email: decoded.email,
       role: liveUser.role,
-      verificationStatus: decoded.verificationStatus,
+      verificationStatus: liveUser.verificationStatus,
     };
+    req.authToken = token;
 
     next();
   } catch (err) {

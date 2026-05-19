@@ -7,13 +7,20 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const prisma = require('../../config/database');
-const { setSession, destroySession } = require('../../config/redis');
+const {
+  setSession,
+  destroySession,
+  SESSION_TTL_SECONDS,
+  PARTICIPANT_TTL_SECONDS,
+} = require('../../config/redis');
 const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const BCRYPT_SALT_ROUNDS = 12;
+const OTP_EXPIRES_IN_MS = 10 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
 
 class AuthService {
   /**
@@ -140,18 +147,18 @@ class AuthService {
       details: { email, role, verificationStatus },
     });
 
-    // Generate a secure email verification token
-    const rawVerificationToken = crypto.randomBytes(32).toString('hex');
-    const hashedVerificationToken = crypto
-      .createHash('sha256')
-      .update(rawVerificationToken)
-      .digest('hex');
+    // Generate a short-lived email OTP. Store only a per-user hash.
+    await prisma.emailVerificationToken.deleteMany({
+      where: { userId: user.id },
+    });
+    const rawVerificationOtp = this._generateOtp();
+    const hashedVerificationOtp = this._hashOtp(user.id, rawVerificationOtp);
 
     await prisma.emailVerificationToken.create({
       data: {
         userId: user.id,
-        token: hashedVerificationToken,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        token: hashedVerificationOtp,
+        expiresAt: new Date(Date.now() + OTP_EXPIRES_IN_MS),
       },
     });
 
@@ -162,14 +169,14 @@ class AuthService {
     };
 
     if (process.env.NODE_ENV !== 'production') {
-      result.verificationToken = rawVerificationToken;
-      result.note = 'This verification token is only returned in development mode. In production it would be emailed.';
+      result.verificationOtp = rawVerificationOtp;
+      result.note = 'This OTP is only returned in development mode. In production it would be emailed.';
     }
 
     // Emit event to background email worker
     eventBus.emit('email:verification_requested', {
       email: user.email,
-      token: rawVerificationToken,
+      otp: rawVerificationOtp,
       firstName: user.profile?.firstName,
       role: user.role,
     });
@@ -178,26 +185,38 @@ class AuthService {
   }
 
   /**
-   * Verify a user's email using a valid verification token.
-   * @param {string} token - The raw (unhashed) verification token
+   * Verify a user's email using a valid one-time passcode.
+   * @param {string} email
+   * @param {string} otp
    * @returns {{ message: string }}
    */
-  async verifyEmail(token) {
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(token)
-      .digest('hex');
+  async verifyEmail(email, otp) {
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      throw new AppError('Invalid or expired OTP. Please request a new one.', 400);
+    }
+
+    const hashedOtp = this._hashOtp(user.id, otp);
 
     const verificationRecord = await prisma.emailVerificationToken.findUnique({
-      where: { token: hashedToken },
+      where: { token: hashedOtp },
       include: { user: true },
     });
 
     if (!verificationRecord) {
+      await this._recordEmailVerificationOtpFailure(user.id);
       throw new AppError(
-        'Invalid or expired verification token. Please request a new one.',
+        'Invalid or expired OTP. Please request a new one.',
         400,
       );
+    }
+
+    if (verificationRecord.attempts >= OTP_MAX_ATTEMPTS) {
+      await prisma.emailVerificationToken.delete({
+        where: { id: verificationRecord.id },
+      });
+      throw new AppError('Too many incorrect OTP attempts. Please request a new one.', 429);
     }
 
     if (new Date(verificationRecord.expiresAt) <= new Date()) {
@@ -205,7 +224,7 @@ class AuthService {
         where: { id: verificationRecord.id },
       });
       throw new AppError(
-        'Verification token has expired. Please request a new one.',
+        'OTP has expired. Please request a new one.',
         400,
       );
     }
@@ -248,7 +267,7 @@ class AuthService {
   /**
    * Resend the verification email for an unverified account.
    * @param {string} email
-   * @returns {{ message: string, verificationToken?: string, note?: string }}
+   * @returns {{ message: string, verificationOtp?: string, note?: string }}
    */
   async resendVerificationEmail(email) {
     const user = await prisma.user.findUnique({
@@ -264,7 +283,7 @@ class AuthService {
 
     if (!user) {
       // Return a generic success message to prevent email enumeration attacks
-      return { message: 'If your account exists and is unverified, a new verification link has been sent.' };
+      return { message: 'If your account exists and is unverified, a new verification OTP has been sent.' };
     }
 
     if (user.verificationStatus === 'VERIFIED') {
@@ -279,34 +298,30 @@ class AuthService {
       where: { userId: user.id },
     });
 
-    // Generate a secure email verification token
-    const rawVerificationToken = crypto.randomBytes(32).toString('hex');
-    const hashedVerificationToken = crypto
-      .createHash('sha256')
-      .update(rawVerificationToken)
-      .digest('hex');
+    const rawVerificationOtp = this._generateOtp();
+    const hashedVerificationOtp = this._hashOtp(user.id, rawVerificationOtp);
 
     await prisma.emailVerificationToken.create({
       data: {
         userId: user.id,
-        token: hashedVerificationToken,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        token: hashedVerificationOtp,
+        expiresAt: new Date(Date.now() + OTP_EXPIRES_IN_MS),
       },
     });
 
     const result = {
-      message: 'If your account exists and is unverified, a new verification link has been sent.',
+      message: 'If your account exists and is unverified, a new verification OTP has been sent.',
     };
 
     if (process.env.NODE_ENV !== 'production') {
-      result.verificationToken = rawVerificationToken;
-      result.note = 'This verification token is only returned in development mode. In production it would be emailed.';
+      result.verificationOtp = rawVerificationOtp;
+      result.note = 'This OTP is only returned in development mode. In production it would be emailed.';
     }
 
     // Emit event to background email worker
     eventBus.emit('email:verification_requested', {
       email: user.email,
-      token: rawVerificationToken,
+      otp: rawVerificationOtp,
       firstName: user.profile?.firstName,
       role: user.role,
     });
@@ -446,33 +461,202 @@ class AuthService {
 
   // ─── Fetch Current User Profile ────────────────────────────────────────
 
+  /**
+   * Rotate the current authenticated session and return a fresh JWT.
+   * This extends both the JWT expiry and the Redis/DB session state.
+   */
+  async extendSession(userId, currentToken, meta = {}) {
+    if (!currentToken) {
+      throw new AppError('Authentication token is required to extend the session.', 401);
+    }
+
+    const existingSession = await prisma.session.findFirst({
+      where: {
+        userId,
+        token: currentToken,
+        revokedAt: null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            isActive: true,
+            verificationStatus: true,
+            suspendedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!existingSession || new Date(existingSession.expiresAt) <= new Date()) {
+      throw new AppError('Session expired. Please log in again.', 401);
+    }
+
+    if (!existingSession.user.isActive || existingSession.user.suspendedAt) {
+      await destroySession(currentToken);
+      throw new AppError('This account has been suspended. Please contact support.', 403);
+    }
+
+    if (existingSession.user.role !== 'PARTICIPANT') {
+      const inactiveMs = Date.now() - new Date(existingSession.lastActiveAt).getTime();
+      if (inactiveMs > SESSION_TTL_SECONDS * 1000) {
+        await destroySession(currentToken);
+        await prisma.session.delete({ where: { id: existingSession.id } });
+        throw new AppError('Session expired due to inactivity. Please log in again.', 401);
+      }
+    }
+
+    const token = this._generateToken(existingSession.user);
+    const decoded = jwt.decode(token);
+    const now = new Date();
+    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : now;
+    const idleTimeoutSeconds = existingSession.user.role === 'PARTICIPANT'
+      ? PARTICIPANT_TTL_SECONDS
+      : SESSION_TTL_SECONDS;
+    const idleExpiresAt = new Date(now.getTime() + idleTimeoutSeconds * 1000);
+
+    try {
+      await destroySession(currentToken);
+    } catch (err) {
+      throw new AppError('Session could not be extended. Please try again.', 503);
+    }
+
+    const session = await prisma.session.update({
+      where: { id: existingSession.id },
+      data: {
+        token,
+        userAgent: meta.userAgent || existingSession.userAgent,
+        ipAddress: meta.ip || existingSession.ipAddress,
+        lastActiveAt: now,
+        expiresAt,
+      },
+      select: {
+        id: true,
+        lastActiveAt: true,
+        expiresAt: true,
+      },
+    });
+
+    try {
+      await setSession(token, {
+        id: existingSession.user.id,
+        role: existingSession.user.role,
+        email: existingSession.user.email,
+      });
+    } catch (err) {
+      await prisma.session.update({
+        where: { id: existingSession.id },
+        data: {
+          token: currentToken,
+          userAgent: existingSession.userAgent,
+          ipAddress: existingSession.ipAddress,
+          lastActiveAt: existingSession.lastActiveAt,
+          expiresAt: existingSession.expiresAt,
+        },
+      });
+      throw new AppError('Session could not be extended. Please try again.', 503);
+    }
+
+    eventBus.emit('audit:log', {
+      actorId: userId,
+      action: 'EXTEND_SESSION',
+      entity: 'session',
+      entityId: session.id,
+      details: { rotated: true },
+    });
+
+    return {
+      token,
+      tokenType: 'Bearer',
+      expiresAt: session.expiresAt,
+      expiresInSeconds: Math.max(
+        0,
+        Math.floor((session.expiresAt.getTime() - now.getTime()) / 1000),
+      ),
+      session: {
+        id: session.id,
+        lastActiveAt: session.lastActiveAt,
+        idleTimeoutSeconds,
+        idleExpiresAt,
+      },
+    };
+  }
+
   async getMe(userId) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        profile: true,
-        staffAssignments: {
-          include: {
-            hackathon: {
-              select: { id: true, title: true, status: true }
-            }
-          }
+      select: {
+        id: true,
+        email: true,
+        authProvider: true,
+        role: true,
+        isActive: true,
+        verificationStatus: true,
+        suspendedAt: true,
+        suspensionReason: true,
+        createdAt: true,
+        updatedAt: true,
+        profile: {
+          select: {
+            firstName: true,
+            lastName: true,
+            representativeName: true,
+          },
         },
-        mentorAssignments: {
-          include: {
-            team: {
-              select: { id: true, name: true, hackathonId: true }
-            }
-          }
-        }
-      }
+        organizationMemberships: {
+          select: {
+            role: true,
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                verificationDocUrl: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!user) {
       throw new AppError('User not found.', 404);
     }
 
-    return this._sanitizeUser(user);
+    const isProfileIncomplete = this._isProfileIncomplete(user.profile);
+    const organizations = user.organizationMemberships.map((membership) => ({
+      id: membership.organization.id,
+      name: membership.organization.name,
+      slug: membership.organization.slug,
+      memberRole: membership.role,
+      hasVerificationDocument: Boolean(membership.organization.verificationDocUrl),
+    }));
+
+    const account = {
+      id: user.id,
+      email: user.email,
+      authProvider: user.authProvider,
+      role: user.role,
+      isActive: user.isActive,
+      verificationStatus: user.verificationStatus,
+      suspendedAt: user.suspendedAt,
+      suspensionReason: user.suspensionReason,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    return {
+      user: account,
+      dashboardRedirect: this._getDashboardPath(user.role),
+      isProfileIncomplete,
+      capabilities: this._buildAuthCapabilities(user, {
+        isProfileIncomplete,
+        hasOrganizerVerificationDocument: organizations.some((org) => org.hasVerificationDocument),
+      }),
+      organizations,
+    };
   }
 
   // ─── OAuth 2.0 Integrations (2026 Standards) ─────────────────────────
@@ -1318,66 +1502,50 @@ class AuthService {
     };
   }
 
-  /**
-   * Get current user profile.
-   * @param {string} userId
-   * @returns {object}
-   */
-  async getMe(userId) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        profile: true,
-      },
-    });
-
-    if (!user) {
-      throw new AppError('User not found.', 404);
-    }
-
-    return this._sanitizeUser(user);
-  }
-
   // ─── Forgot / Reset Password (UC0002 AF3) ────────────────────────────
 
   /**
    * Request a password reset.
-   * Generates a secure token, stores it in the DB, and returns it.
-   * In production, this token would be emailed to the user.
+   * Generates a short-lived one-time passcode, stores only a per-user hash,
+   * and emails the raw passcode to the user.
    * @param {string} email
-   * @returns {{ message: string, resetToken?: string }}
+   * @returns {{ message: string, resetOtp?: string, note?: string }}
    */
   async forgotPassword(email) {
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new AppError(
-        'Account not found. Please create an account.',
-        404,
-      );
+    const genericResult = {
+      message: 'If an account with that email exists, a password reset OTP has been sent.',
+    };
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: {
+        profile: {
+          select: {
+            firstName: true,
+          },
+        },
+      },
+    });
+
+    if (!user || !user.password) {
+      return genericResult;
     }
 
-    // Delete any existing reset tokens for this user
     await prisma.passwordResetToken.deleteMany({
       where: { userId: user.id },
     });
 
-    // Generate a secure random token
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(rawToken)
-      .digest('hex');
+    const rawResetOtp = this._generateOtp();
+    const hashedResetOtp = this._hashOtp(user.id, rawResetOtp);
 
-    // Store hashed token with 1-hour expiry
     await prisma.passwordResetToken.create({
       data: {
         userId: user.id,
-        token: hashedToken,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+        token: hashedResetOtp,
+        expiresAt: new Date(Date.now() + OTP_EXPIRES_IN_MS),
       },
     });
 
-    // Audit log
     eventBus.emit('audit:log', {
       actorId: user.id,
       action: 'UPDATE',
@@ -1386,23 +1554,17 @@ class AuthService {
       details: { action: 'password_reset_requested' },
     });
 
-    // In production, send email with reset link containing rawToken.
-    // For development, return the token in the response.
-    const result = {
-      message:
-        'If an account with that email exists, a password reset link has been sent.',
-    };
+    const result = { ...genericResult };
 
     if (process.env.NODE_ENV !== 'production') {
-      result.resetToken = rawToken;
+      result.resetOtp = rawResetOtp;
       result.note =
-        'This token is only returned in development mode. In production it would be emailed.';
+        'This OTP is only returned in development mode. In production it would be emailed.';
     }
 
-    // Emit event to background email worker
     eventBus.emit('email:password_reset_requested', {
       email: user.email,
-      token: rawToken,
+      otp: rawResetOtp,
       firstName: user.profile?.firstName,
     });
 
@@ -1410,72 +1572,77 @@ class AuthService {
   }
 
   /**
-   * Reset the password using a valid reset token.
-   * @param {string} token  - The raw (unhashed) token from the reset link
+   * Reset the password using a valid password reset OTP.
+   * @param {string} email
+   * @param {string} otp
    * @param {string} newPassword
    * @returns {{ message: string }}
    */
-  async resetPassword(token, newPassword) {
-    // Hash the incoming token to compare with stored hash
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(token)
-      .digest('hex');
+  async resetPassword(email, otp, newPassword) {
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      throw new AppError('Invalid or expired OTP. Please request a new one.', 400);
+    }
+
+    const hashedOtp = this._hashOtp(user.id, otp);
 
     const resetRecord = await prisma.passwordResetToken.findUnique({
-      where: { token: hashedToken },
+      where: { token: hashedOtp },
     });
 
     if (!resetRecord) {
+      await this._recordPasswordResetOtpFailure(user.id);
       throw new AppError(
-        'Invalid or expired reset token. Please request a new one.',
+        'Invalid or expired OTP. Please request a new one.',
         400,
       );
     }
 
+    if (resetRecord.attempts >= OTP_MAX_ATTEMPTS) {
+      await prisma.passwordResetToken.delete({
+        where: { id: resetRecord.id },
+      });
+      throw new AppError('Too many incorrect OTP attempts. Please request a new one.', 429);
+    }
+
     if (new Date(resetRecord.expiresAt) <= new Date()) {
-      // Clean up expired token
       await prisma.passwordResetToken.delete({
         where: { id: resetRecord.id },
       });
       throw new AppError(
-        'Reset token has expired. Please request a new one.',
+        'OTP has expired. Please request a new one.',
         400,
       );
     }
 
-    // Hash new password and update
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
 
     await prisma.$transaction(async (tx) => {
-      // Update password
       await tx.user.update({
-        where: { id: resetRecord.userId },
+        where: { id: user.id },
         data: { password: hashedPassword },
       });
 
-      // Delete the used reset token
       await tx.passwordResetToken.delete({
         where: { id: resetRecord.id },
       });
 
-      // Invalidate all existing sessions in Redis and DB for security
-      const sessions = await tx.session.findMany({ where: { userId: resetRecord.userId } });
+      const sessions = await tx.session.findMany({ where: { userId: user.id } });
       for (const s of sessions) {
         await destroySession(s.token);
       }
-      
+
       await tx.session.deleteMany({
-        where: { userId: resetRecord.userId },
+        where: { userId: user.id },
       });
     });
 
-    // Audit log
     eventBus.emit('audit:log', {
-      actorId: resetRecord.userId,
+      actorId: user.id,
       action: 'UPDATE',
       entity: 'user',
-      entityId: resetRecord.userId,
+      entityId: user.id,
       details: { action: 'password_reset_completed' },
     });
 
@@ -1556,34 +1723,81 @@ class AuthService {
    * @param {object} data
    * @param {string} data.organizationName
    * @param {string} [data.representativeName]
-   * @returns {{ message: string }}
+   * @param {string} data.currentToken
+   * @param {string} [data.userAgent]
+   * @param {string} [data.ip]
+   * @returns {{ message: string, token: string }}
    */
-  async requestOrganizerUpgrade(userId, { organizationName, representativeName }) {
+  async requestOrganizerUpgrade(
+    userId,
+    {
+      organizationName,
+      representativeName,
+      currentToken,
+      userAgent,
+      ip,
+    },
+  ) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { profile: true },
+      include: {
+        profile: true,
+        organizationMemberships: {
+          select: { id: true },
+        },
+      },
     });
 
     if (!user) {
       throw new AppError('User not found.', 404);
     }
 
-    if (user.role === 'ORGANIZER') {
-      throw new AppError('You are already an Organizer.', 400);
+    if (!currentToken) {
+      throw new AppError('Authentication token is required to request organizer upgrade.', 401);
     }
 
-    if (user.role === 'ADMIN') {
-      throw new AppError('Admin accounts cannot be downgraded to Organizer.', 400);
+    if (!user.isActive || user.suspendedAt) {
+      throw new AppError('This account has been suspended. Please contact support.', 403);
+    }
+
+    if (user.role !== 'PARTICIPANT') {
+      throw new AppError('Only verified participants can request an Organizer upgrade.', 400);
+    }
+
+    if (user.verificationStatus !== 'VERIFIED') {
+      throw new AppError('Please verify your email before requesting an Organizer upgrade.', 403);
+    }
+
+    if (this._isProfileIncomplete(user.profile)) {
+      throw new AppError('Please complete your profile before requesting an Organizer upgrade.', 400);
+    }
+
+    if (user.organizationMemberships.length > 0) {
+      throw new AppError('This account is already linked to an organization.', 409);
     }
 
     if (!organizationName) {
       throw new AppError('Organization name is required to become an Organizer.', 400);
     }
 
-    // Create the organization and upgrade the user's role in a transaction
-    await prisma.$transaction(async (tx) => {
-      // 1. Upgrade user role to ORGANIZER and set verification to PENDING
-      await tx.user.update({
+    const currentSession = await prisma.session.findFirst({
+      where: {
+        userId,
+        token: currentToken,
+        revokedAt: null,
+      },
+    });
+
+    if (!currentSession || new Date(currentSession.expiresAt) <= new Date()) {
+      throw new AppError('Session expired. Please log in again.', 401);
+    }
+
+    const cleanedOrganizationName = organizationName.trim();
+    const cleanedRepresentativeName = representativeName?.trim()
+      || `${user.profile.firstName} ${user.profile.lastName}`.trim();
+
+    const { updatedUser, organization } = await prisma.$transaction(async (tx) => {
+      const nextUser = await tx.user.update({
         where: { id: userId },
         data: {
           role: 'ORGANIZER',
@@ -1591,31 +1805,20 @@ class AuthService {
         },
       });
 
-      // 2. Update representative name if provided
-      if (representativeName) {
-        await tx.userProfile.update({
-          where: { userId },
-          data: { representativeName },
-        });
-      }
-
-      // 3. Create the organization
-      const slug = organizationName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        + '-' + userId.slice(0, 8);
+      await tx.userProfile.update({
+        where: { userId },
+        data: { representativeName: cleanedRepresentativeName },
+      });
 
       const org = await tx.organization.create({
         data: {
-          name: organizationName,
-          slug,
+          name: cleanedOrganizationName,
+          slug: this._buildOrganizationSlug(cleanedOrganizationName, userId),
           verificationDocUrl: null,
           contactEmail: user.email,
         },
       });
 
-      // 4. Link the user as the organization admin
       await tx.organizationMember.create({
         data: {
           organizationId: org.id,
@@ -1623,19 +1826,78 @@ class AuthService {
           role: 'ADMIN',
         },
       });
+
+      return { updatedUser: nextUser, organization: org };
     });
 
-    // Audit log
+    const otherSessions = await prisma.session.findMany({
+      where: {
+        userId,
+        token: { not: currentToken },
+      },
+      select: { token: true },
+    });
+
+    for (const session of otherSessions) {
+      await destroySession(session.token);
+    }
+
+    await prisma.session.deleteMany({
+      where: {
+        userId,
+        token: { not: currentToken },
+      },
+    });
+
+    const token = this._generateToken(updatedUser);
+    const decoded = jwt.decode(token);
+    const now = new Date();
+    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : now;
+
+    await destroySession(currentToken);
+    await prisma.session.update({
+      where: { id: currentSession.id },
+      data: {
+        token,
+        userAgent: userAgent || currentSession.userAgent,
+        ipAddress: ip || currentSession.ipAddress,
+        lastActiveAt: now,
+        expiresAt,
+      },
+    });
+
+    await setSession(token, {
+      id: updatedUser.id,
+      role: updatedUser.role,
+      email: updatedUser.email,
+    });
+
     eventBus.emit('audit:log', {
       actorId: userId,
       action: 'ROLE_UPGRADE_REQUESTED',
       entity: 'user',
       entityId: userId,
-      details: { previousRole: 'PARTICIPANT', newRole: 'ORGANIZER', organizationName },
+      details: {
+        previousRole: 'PARTICIPANT',
+        newRole: 'ORGANIZER',
+        organizationId: organization.id,
+        organizationName: cleanedOrganizationName,
+      },
     });
 
+    const authContext = await this.getMe(userId);
+
     return {
-      message: 'Your Organizer upgrade request has been submitted. An administrator will review your credentials shortly.',
+      message: 'Organizer upgrade submitted. Please submit your organization verification document for admin review.',
+      token,
+      tokenType: 'Bearer',
+      status: 'PENDING',
+      nextStep: 'SUBMIT_VERIFICATION_DOCUMENT',
+      user: authContext.user,
+      dashboardRedirect: authContext.dashboardRedirect,
+      isProfileIncomplete: authContext.isProfileIncomplete,
+      capabilities: authContext.capabilities,
+      organizations: authContext.organizations,
     };
   }
 
@@ -1644,6 +1906,7 @@ class AuthService {
   _generateToken(user) {
     return jwt.sign(
       { 
+        jti: crypto.randomUUID(),
         id: user.id, 
         email: user.email, 
         role: user.role,
@@ -1668,6 +1931,89 @@ class AuthService {
       PARTICIPANT: '/participant/dashboard',
     };
     return dashboards[role] || '/dashboard';
+  }
+
+  _isProfileIncomplete(profile) {
+    if (!profile) {
+      return true;
+    }
+
+    const firstName = profile.firstName?.trim();
+    const lastName = profile.lastName?.trim();
+
+    return !firstName
+      || !lastName
+      || firstName === 'New'
+      || lastName === 'User';
+  }
+
+  _buildAuthCapabilities(user, { isProfileIncomplete, hasOrganizerVerificationDocument }) {
+    const isUsableAccount = user.isActive && !user.suspendedAt;
+    const isOrganizer = user.role === 'ORGANIZER';
+    const isParticipant = user.role === 'PARTICIPANT';
+    const isVerified = user.verificationStatus === 'VERIFIED';
+
+    return {
+      canAccessDashboard: isUsableAccount,
+      canJoinHackathons: isUsableAccount && isParticipant && isVerified && !isProfileIncomplete,
+      canCreateHackathons: isUsableAccount && isOrganizer && isVerified && !isProfileIncomplete,
+      canSubmitOrganizerVerification: isUsableAccount
+        && isOrganizer
+        && user.verificationStatus === 'PENDING'
+        && !hasOrganizerVerificationDocument,
+      requiresEmailVerification: user.verificationStatus === 'UNVERIFIED',
+      requiresProfileCompletion: isProfileIncomplete,
+      requiresOrganizerVerificationDocument: isOrganizer
+        && user.verificationStatus === 'PENDING'
+        && !hasOrganizerVerificationDocument,
+      requiresOrganizerReview: isOrganizer
+        && ['PENDING', 'UNDER_REVIEW'].includes(user.verificationStatus),
+      isSuspended: Boolean(user.suspendedAt) || !user.isActive,
+    };
+  }
+
+  _generateOtp() {
+    return crypto.randomInt(100000, 1000000).toString();
+  }
+
+  _hashOtp(userId, otp) {
+    return crypto
+      .createHash('sha256')
+      .update(`${userId}:${otp}`)
+      .digest('hex');
+  }
+
+  async _recordEmailVerificationOtpFailure(userId) {
+    await this._recordOtpFailure('emailVerificationToken', userId);
+  }
+
+  async _recordPasswordResetOtpFailure(userId) {
+    await this._recordOtpFailure('passwordResetToken', userId);
+  }
+
+  async _recordOtpFailure(modelName, userId) {
+    const tokenRecord = await prisma[modelName].findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!tokenRecord) {
+      return;
+    }
+
+    const attempts = tokenRecord.attempts + 1;
+
+    if (attempts >= OTP_MAX_ATTEMPTS) {
+      await prisma[modelName].delete({
+        where: { id: tokenRecord.id },
+      });
+      return;
+    }
+
+    await prisma[modelName].update({
+      where: { id: tokenRecord.id },
+      data: { attempts },
+    });
   }
 
   _derivePersonName({ givenName, familyName, fullName, fallbackName } = {}) {
