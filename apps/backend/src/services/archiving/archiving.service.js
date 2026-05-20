@@ -43,6 +43,11 @@ class ArchivingService {
     if (!hackathon) throw new AppError('Hackathon not found.', 404);
     if (hackathon.status === 'ARCHIVED') throw new AppError('Hackathon is already archived.', 400);
 
+    const allowedPhases = ['DRAFT', 'COMPLETED', 'CANCELLED'];
+    if (!allowedPhases.includes(hackathon.status)) {
+      throw new AppError('Only Draft, Completed, or Cancelled hackathons can be archived.', 400);
+    }
+
     // Ensure directory exists
     await fs.mkdir(this.archiveDir, { recursive: true });
 

@@ -37,12 +37,21 @@ enum UserRole {
 
 enum HackathonStatus {
   DRAFT
+  UPCOMING
   REGISTRATION_OPEN
   REGISTRATION_CLOSED
   IN_PROGRESS
   JUDGING
   COMPLETED
+  CANCELLED
+  SUSPENDED
   ARCHIVED
+}
+
+enum RegistrationStatus {
+  REGISTERED
+  CHECKED_IN
+  WITHDRAWN
 }
 
 enum InvitationStatus {
@@ -1333,6 +1342,8 @@ model Registration {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId      String   @map("user_id") @db.Uuid
   hackathonId String   @map("hackathon_id") @db.Uuid
+  status      RegistrationStatus @default(REGISTERED)
+  checkedInAt DateTime? @map("checked_in_at")
   createdAt   DateTime @default(now()) @map("created_at")
 
   // Relations

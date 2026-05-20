@@ -3,6 +3,7 @@
 // =============================================================================
 
 const eventsService = require('../services/events/events.service');
+const archivingService = require('../services/archiving/archiving.service');
 const catchAsync = require('../utils/catchAsync');
 const { generateIcs } = require('../utils/calendar');
 const AppError = require('../utils/AppError');
@@ -126,11 +127,146 @@ exports.registerParticipant = catchAsync(async (req, res) => {
   });
 });
 
+exports.unregisterParticipant = catchAsync(async (req, res) => {
+  const hackathon = await eventsService.unregisterParticipant(req.params.id, req.user.id);
+  res.status(200).json({
+    success: true,
+    message: 'Successfully unregistered from hackathon.',
+    data: { hackathon },
+  });
+});
+
+exports.kickParticipant = catchAsync(async (req, res) => {
+  const result = await eventsService.kickParticipant(req.params.id, req.params.userId, req.user.id, req.body.reason);
+  res.status(200).json({
+    success: true,
+    message: 'Participant was successfully kicked from the hackathon.',
+    data: { result },
+  });
+});
+
 exports.getParticipants = catchAsync(async (req, res) => {
   const participants = await eventsService.getParticipants(req.params.id);
 
   res.status(200).json({
     success: true,
     data: { participants },
+  });
+});
+
+
+exports.checkInParticipant = catchAsync(async (req, res) => {
+  const registration = await eventsService.checkInParticipant(req.params.id, req.params.userId, req.user.id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Participant checked in successfully.',
+    data: { registration },
+  });
+});
+
+exports.undoCheckIn = catchAsync(async (req, res) => {
+  const registration = await eventsService.undoCheckIn(req.params.id, req.params.userId, req.user.id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Participant check-in reverted successfully.',
+    data: { registration },
+  });
+});
+
+exports.archive = catchAsync(async (req, res) => {
+  const filePath = await archivingService.archiveHackathon(
+    req.params.id,
+    req.user.id
+  );
+
+  res.status(200).json({
+    success: true,
+    message: 'Hackathon archival process started successfully.',
+    data: { archiveJobPath: filePath },
+  });
+});
+
+exports.clone = catchAsync(async (req, res) => {
+  const hackathon = await eventsService.cloneEvent(
+    req.params.id,
+    req.user.id
+  );
+
+  res.status(201).json({
+    success: true,
+    message: 'Hackathon cloned successfully.',
+    data: { hackathon },
+  });
+});
+
+exports.getContext = catchAsync(async (req, res) => {
+  const context = await eventsService.getContext(req.params.id, req.user.id);
+  res.status(200).json({
+    success: true,
+    data: { context },
+  });
+});
+
+exports.getStats = catchAsync(async (req, res) => {
+  const stats = await eventsService.getQuickStats(req.params.id);
+  res.status(200).json({
+    success: true,
+    data: { stats },
+  });
+});
+
+exports.publish = catchAsync(async (req, res) => {
+  const hackathon = await eventsService.publishEvent(req.params.id, req.user.id);
+  res.status(200).json({
+    success: true,
+    message: 'Hackathon published successfully.',
+    data: { hackathon },
+  });
+});
+
+exports.cancel = catchAsync(async (req, res) => {
+  const hackathon = await eventsService.cancelEvent(req.params.id, req.user.id, req.body.reason);
+  res.status(200).json({
+    success: true,
+    message: 'Hackathon cancelled successfully.',
+    data: { hackathon },
+  });
+});
+
+exports.complete = catchAsync(async (req, res) => {
+  const hackathon = await eventsService.completeEvent(req.params.id, req.user.id);
+  res.status(200).json({
+    success: true,
+    message: 'Hackathon marked as completed.',
+    data: { hackathon },
+  });
+});
+
+exports.suspend = catchAsync(async (req, res) => {
+  const hackathon = await eventsService.suspendEvent(req.params.id, req.user.id, req.body.reason);
+  res.status(200).json({
+    success: true,
+    message: 'Hackathon suspended successfully.',
+    data: { hackathon },
+  });
+});
+
+exports.resume = catchAsync(async (req, res) => {
+  const hackathon = await eventsService.resumeEvent(req.params.id, req.user.id);
+  res.status(200).json({
+    success: true,
+    message: 'Hackathon resumed successfully.',
+    data: { hackathon },
+  });
+});
+
+exports.updateSchedule = catchAsync(async (req, res) => {
+  const hackathon = await eventsService.updateSchedule(req.params.id, req.user.id, req.body);
+  res.status(200).json({
+    success: true,
+    message: 'Hackathon schedule updated successfully.',
+    data: { hackathon },
   });
 });

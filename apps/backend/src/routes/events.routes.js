@@ -24,7 +24,7 @@ const router = Router();
 
 const createSchema = Joi.object({
   title: Joi.string().min(3).max(255).required(),
-  status: Joi.string().valid('DRAFT', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'IN_PROGRESS', 'JUDGING', 'COMPLETED', 'ARCHIVED').default('DRAFT'),
+  status: Joi.string().valid('DRAFT', 'UPCOMING', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'IN_PROGRESS', 'JUDGING', 'COMPLETED', 'CANCELLED', 'SUSPENDED', 'ARCHIVED').default('DRAFT'),
   overrideConflict: Joi.boolean().default(false),
   titleAm: Joi.string().max(255).allow(null, ''),
   description: Joi.string().allow(null, ''),
@@ -55,7 +55,33 @@ const createSchema = Joi.object({
 const updateSchema = createSchema.fork(
   ['title'],
   (field) => field.optional()
-);
+).keys({
+  status: Joi.forbidden().messages({
+    'any.unknown': 'Status updates must be performed via explicit transition endpoints (e.g., /publish, /complete).'
+  })
+});
+
+const scheduleUpdateSchema = Joi.object({
+  registrationStart: Joi.date().iso().required(),
+  registrationEnd: Joi.date().iso().greater(Joi.ref('registrationStart')).required(),
+  eventStart: Joi.date().iso().greater(Joi.ref('registrationEnd')).required(),
+  eventEnd: Joi.date().iso().greater(Joi.ref('eventStart')).required(),
+  submissionDeadline: Joi.date().iso().greater(Joi.ref('eventStart')).required(),
+  judgingStart: Joi.date().iso().greater(Joi.ref('submissionDeadline')).allow(null),
+  judgingEnd: Joi.date().iso().greater(Joi.ref('submissionDeadline')).required(),
+});
+
+const cancelSchema = Joi.object({
+  reason: Joi.string().max(500).allow(null, '')
+});
+
+const suspendSchema = Joi.object({
+  reason: Joi.string().max(500).required()
+});
+
+const kickSchema = Joi.object({
+  reason: Joi.string().max(500).required()
+});
 
 // ── Routes ──────────────────────────────────────────────────────────────
 
@@ -93,6 +119,16 @@ router.put(
   eventsController.update
 );
 
+router.put(
+  '/:id/schedule',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('CO_ORGANIZER'),
+  validate(scheduleUpdateSchema),
+  eventsController.updateSchedule
+);
+
 router.delete(
   '/:id',
   authenticate,
@@ -109,6 +145,125 @@ router.post(
   ensureProfileComplete,
   authorize('PARTICIPANT', 'ORGANIZER'),
   eventsController.registerParticipant
+);
+
+router.delete(
+  '/:id/register',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorize('PARTICIPANT', 'ORGANIZER'),
+  eventsController.unregisterParticipant
+);
+
+router.post(
+  '/:id/participants/:userId/check-in',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('LOGISTICS', 'ADMIN', 'CO_ORGANIZER'),
+  eventsController.checkInParticipant
+);
+
+router.delete(
+  '/:id/participants/:userId/check-in',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('LOGISTICS', 'ADMIN', 'CO_ORGANIZER'),
+  eventsController.undoCheckIn
+);
+
+// Trust & Safety: Organizer-initiated participant removal
+router.delete(
+  '/:id/participants/:userId',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('ADMIN', 'CO_ORGANIZER'),
+  validate(kickSchema),
+  eventsController.kickParticipant
+);
+
+router.post(
+  '/:id/archive',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorize('ORGANIZER', 'ADMIN'),
+  eventsController.archive
+);
+
+router.post(
+  '/:id/clone',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorize('ORGANIZER', 'ADMIN'),
+  eventsController.clone
+);
+
+// State Machine Transitions
+router.post(
+  '/:id/publish',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('CO_ORGANIZER', 'TECHNICAL_LEAD'),
+  eventsController.publish
+);
+
+router.post(
+  '/:id/cancel',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('CO_ORGANIZER'),
+  validateBody(cancelSchema),
+  eventsController.cancel
+);
+
+router.post(
+  '/:id/complete',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('CO_ORGANIZER'),
+  eventsController.complete
+);
+
+router.post(
+  '/:id/suspend',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('ADMIN', 'CO_ORGANIZER'),
+  validateBody(suspendSchema),
+  eventsController.suspend
+);
+
+router.post(
+  '/:id/resume',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorizeEventStaff('ADMIN', 'CO_ORGANIZER'),
+  eventsController.resume
+);
+
+// Unified User Context
+router.get(
+  '/:id/context',
+  authenticate,
+  eventsController.getContext
+);
+
+// Live Event Quick Stats
+router.get(
+  '/:id/stats',
+  authenticate,
+  authorizeEventStaff('CO_ORGANIZER', 'TECHNICAL_LEAD', 'LOGISTICS'),
+  eventsController.getStats
 );
 
 module.exports = router;

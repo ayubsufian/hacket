@@ -62,6 +62,8 @@ class EventsService {
       details: { title: hackathon.title },
     });
 
+    await redisClient.del('events:active');
+
     return hackathon;
   }
 
@@ -384,6 +386,8 @@ class EventsService {
       details: { updatedFields: Object.keys(updateData) },
     });
 
+    await redisClient.del('events:active');
+
     return updated;
   }
 
@@ -401,6 +405,10 @@ class EventsService {
       throw new AppError('Hackathon not found.', 404);
     }
 
+    if (hackathon.status !== 'DRAFT') {
+      throw new AppError('Only DRAFT hackathons can be hard-deleted. Published hackathons must be cancelled or archived to preserve audit integrity.', 403);
+    }
+
     await prisma.hackathon.delete({ where: { id: hackathonId } });
 
     eventBus.emit('audit:log', {
@@ -409,6 +417,97 @@ class EventsService {
       entity: 'hackathon',
       entityId: hackathonId,
     });
+
+    await redisClient.del('events:active');
+  }
+
+  /**
+   * Kick a participant from a hackathon (Organizer only).
+   */
+  async kickParticipant(hackathonId, participantUserId, organizerId, reason) {
+    if (!reason) throw new AppError('A reason is required to kick a participant.', 400);
+
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId }
+    });
+
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    const registration = await prisma.registration.findFirst({
+      where: { hackathonId, userId: participantUserId }
+    });
+
+    if (!registration || registration.status === 'WITHDRAWN') {
+      throw new AppError('Participant is not actively registered for this hackathon.', 404);
+    }
+
+    const membership = await prisma.teamMember.findFirst({
+      where: {
+        userId: participantUserId,
+        team: { hackathonId }
+      },
+      include: {
+        team: {
+          include: {
+            members: true
+          }
+        }
+      }
+    });
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Soft delete registration
+      const updatedReg = await tx.registration.update({
+        where: { id: registration.id },
+        data: { status: 'WITHDRAWN' }
+      });
+
+      // 2. Handle team membership
+      if (membership) {
+        const team = membership.team;
+        if (team.members.length === 1) {
+          // Sole member, delete team
+          await tx.teamMember.delete({ where: { id: membership.id } });
+          await tx.team.delete({ where: { id: team.id } });
+        } else {
+          // Multiple members
+          await tx.teamMember.delete({ where: { id: membership.id } });
+          
+          // Reassign leadership if kicked user was leader
+          if (team.leaderId === participantUserId) {
+            const nextMember = team.members.find(m => m.userId !== participantUserId);
+            if (nextMember) {
+              await tx.team.update({
+                where: { id: team.id },
+                data: { leaderId: nextMember.userId }
+              });
+            }
+          }
+        }
+      }
+
+      return updatedReg;
+    });
+
+    eventBus.emit('audit:log', {
+      actorId: organizerId,
+      action: 'PARTICIPANT_KICKED',
+      entity: 'registration',
+      entityId: registration.id,
+      details: { hackathonId, participantUserId, reason }
+    });
+
+    // 2026 Standard: Emit notification event for trust & safety kicks
+    eventBus.emit('notification:kick', {
+      userId: participantUserId,
+      hackathonId,
+      hackathonTitle: hackathon.title,
+      reason
+    });
+
+    await redisClient.del('events:active');
+
+    return result;
   }
 
   /**
@@ -506,25 +605,527 @@ class EventsService {
       ? `${profile.firstName}'s Team`
       : `Team-${userId.substring(0, 8)}`;
 
-    // Create solo team + membership
-    const team = await prisma.team.create({
-      data: {
-        hackathonId,
-        name: teamName,
-        members: {
-          create: { userId, role: 'leader' },
-        },
-      },
-      include: {
-        members: {
-          include: {
-            user: { select: { id: true, email: true } },
+    // Create Registration and solo team atomically
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Create the official Registration record
+      await tx.registration.create({
+        data: {
+          userId,
+          hackathonId,
+          status: 'REGISTERED'
+        }
+      });
+
+      // 2. Create solo team + membership
+      return await tx.team.create({
+        data: {
+          hackathonId,
+          name: teamName,
+          members: {
+            create: { userId, role: 'leader' },
           },
         },
-      },
+        include: {
+          members: {
+            include: {
+              user: { select: { id: true, email: true } },
+            },
+          },
+        },
+      });
     });
 
-    return team;
+    return result;
+  }
+
+  /**
+   * Clone an existing hackathon for a new iteration.
+   * Deep copies metadata, criteria, and tags. Does NOT copy teams, submissions, or dates.
+   * @param {string} hackathonId
+   * @param {string} organizerId
+   * @returns {object} The cloned hackathon
+   */
+  async cloneEvent(hackathonId, organizerId) {
+    const original = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      include: {
+        tags: true,
+        judgingCriteria: true,
+      }
+    });
+
+    if (!original) throw new AppError('Hackathon not found to clone.', 404);
+
+    const now = new Date();
+    // Default dates for the cloned event to avoid validation errors, typically set to future dates
+    const oneMonthFromNow = new Date(now.setMonth(now.getMonth() + 1));
+    const twoMonthsFromNow = new Date(now.setMonth(now.getMonth() + 2));
+
+    const clonedTitle = `Copy of ${original.title}`;
+    
+    // Check title conflict and resolve slug
+    const slugBase = this._generateSlug(clonedTitle);
+    const uniqueSlug = `${slugBase}-${Date.now().toString(36).slice(-4)}`;
+
+    const cloned = await prisma.hackathon.create({
+      data: {
+        title: clonedTitle,
+        slug: uniqueSlug,
+        description: original.description,
+        coverImageUrl: original.coverImageUrl,
+        status: 'DRAFT',
+        organizerId,
+        organizationId: original.organizationId,
+        maxTeamSize: original.maxTeamSize,
+        minTeamSize: original.minTeamSize,
+        maxParticipants: original.maxParticipants,
+        
+        // Setup placeholder dates
+        registrationStart: oneMonthFromNow,
+        registrationEnd: twoMonthsFromNow,
+        eventStart: twoMonthsFromNow,
+        eventEnd: twoMonthsFromNow,
+        submissionDeadline: twoMonthsFromNow,
+
+        rules: original.rules,
+        prizes: original.prizes,
+        prerequisites: original.prerequisites,
+        region: original.region,
+        venue: original.venue,
+        isVirtual: original.isVirtual,
+        websiteUrl: original.websiteUrl,
+        contactEmail: original.contactEmail,
+        
+        // Deep copy tags
+        tags: {
+          create: original.tags.map(t => ({ tag: t.tag, isPending: false }))
+        },
+        // Deep copy judging criteria
+        judgingCriteria: {
+          create: original.judgingCriteria.map(c => ({
+            name: c.name,
+            description: c.description,
+            maxScore: c.maxScore,
+            weight: c.weight,
+            sortOrder: c.sortOrder
+          }))
+        }
+      },
+      include: {
+        tags: true,
+        judgingCriteria: true
+      }
+    });
+
+    eventBus.emit('audit:log', {
+      actorId: organizerId,
+      action: 'CREATE',
+      entity: 'hackathon',
+      entityId: cloned.id,
+      details: { clonedFrom: original.id },
+    });
+
+    return cloned;
+  }
+
+  /**
+   * Unregister a user from a hackathon.
+   * If they are the leader of a multi-member team, require transferring leadership first.
+   * If they are the only member, disband the team.
+   * @param {string} hackathonId
+   * @param {string} userId
+   */
+  async unregisterParticipant(hackathonId, userId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { eventStart: true, status: true }
+    });
+
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    if (new Date() >= hackathon.eventStart || hackathon.status !== 'REGISTRATION_OPEN') {
+      throw new AppError('Cannot unregister after the event has started or registration is closed.', 400);
+    }
+
+    const membership = await prisma.teamMember.findFirst({
+      where: {
+        userId,
+        team: { hackathonId }
+      },
+      include: {
+        team: {
+          include: {
+            members: true
+          }
+        }
+      }
+    });
+
+    if (!membership) {
+      throw new AppError('You are not registered for this hackathon.', 400);
+    }
+
+    const team = membership.team;
+    
+    // 2026 Platform Standard: Team leadership integrity
+    if (membership.role === 'LEADER' && team.members.length > 1) {
+      throw new AppError('You are the leader of a multi-member team. Please assign a new leader before unregistering.', 403);
+    }
+
+    // Unregister logic
+    await prisma.$transaction(async (tx) => {
+      if (team.members.length === 1) {
+        // Sole member, disband team
+        await tx.team.delete({ where: { id: team.id } });
+      } else {
+        // Just remove the user from the team
+        await tx.teamMember.delete({ where: { id: membership.id } });
+      }
+      
+      // Instead of deleting, soft-delete the registration to preserve drop-out analytics
+      await tx.registration.updateMany({
+        where: { userId, hackathonId },
+        data: { status: 'WITHDRAWN' }
+      });
+    });
+
+    eventBus.emit('audit:log', {
+      actorId: userId,
+      action: 'DELETE',
+      entity: 'registration',
+      entityId: userId,
+      details: { hackathonId }
+    });
+  }
+
+  /**
+   * Check-in a participant at the event.
+   * @param {string} hackathonId
+   * @param {string} userId
+   * @param {string} organizerId - The staff member performing the check-in
+   */
+  async checkInParticipant(hackathonId, userId, staffId) {
+    const registration = await prisma.registration.findFirst({
+      where: { hackathonId, userId },
+    });
+
+    if (!registration) throw new AppError('Registration not found.', 404);
+
+    if (registration.status === 'WITHDRAWN') {
+      throw new AppError('Participant has withdrawn their registration and cannot be checked in.', 400);
+    }
+    
+    if (registration.status === 'CHECKED_IN') {
+      throw new AppError('Participant is already checked in.', 400);
+    }
+
+    const updated = await prisma.registration.update({
+      where: { id: registration.id },
+      data: { 
+        status: 'CHECKED_IN',
+        checkedInAt: new Date()
+      }
+    });
+
+    eventBus.emit('audit:log', { 
+      actorId: staffId, 
+      action: 'PARTICIPANT_CHECKIN', 
+      entity: 'registration', 
+      entityId: registration.id,
+      details: { hackathonId, userId }
+    });
+
+    return updated;
+  }
+
+  async undoCheckIn(hackathonId, userId, staffId) {
+    const registration = await prisma.registration.findFirst({
+      where: { hackathonId, userId },
+    });
+
+    if (!registration) throw new AppError('Registration not found.', 404);
+
+    if (registration.status !== 'CHECKED_IN') {
+      throw new AppError('Participant is not currently checked in.', 400);
+    }
+
+    const updated = await prisma.registration.update({
+      where: { id: registration.id },
+      data: { 
+        status: 'REGISTERED',
+        checkedInAt: null
+      }
+    });
+
+    eventBus.emit('audit:log', { 
+      actorId: staffId, 
+      action: 'PARTICIPANT_UNDO_CHECKIN', 
+      entity: 'registration', 
+      entityId: registration.id,
+      details: { hackathonId, userId, reason: 'Manual reversion by staff' }
+    });
+
+    return updated;
+  }
+
+  async getContext(hackathonId, userId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { id: true, status: true, organizationId: true }
+    });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    const [staff, registration, teamMember] = await Promise.all([
+      prisma.staffAssignment.findFirst({
+        where: { hackathonId, userId, isActive: true },
+        select: { staffRole: true, isLead: true }
+      }),
+      prisma.registration.findUnique({
+        where: { userId_hackathonId: { userId, hackathonId } }
+      }),
+      prisma.teamMember.findFirst({
+        where: { userId, team: { hackathonId } },
+        select: { role: true, teamId: true }
+      })
+    ]);
+
+    return {
+      status: hackathon.status,
+      staffRole: staff ? staff.staffRole : null,
+      isLead: staff ? staff.isLead : false,
+      isRegistered: !!registration || !!teamMember,
+      teamId: teamMember ? teamMember.teamId : null,
+      teamRole: teamMember ? teamMember.role : null,
+    };
+  }
+
+  async publishEvent(hackathonId, organizerId) {
+    const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId } });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    let newStatus = 'REGISTRATION_OPEN';
+    if (hackathon.registrationStart && new Date() < hackathon.registrationStart) {
+      newStatus = 'UPCOMING';
+    }
+
+    const updatedData = { ...hackathon, status: newStatus };
+    this._validatePublishingFields(updatedData);
+
+    const updated = await prisma.hackathon.update({
+      where: { id: hackathonId },
+      data: { status: newStatus }
+    });
+
+    eventBus.emit('audit:log', { actorId: organizerId, action: 'STATUS_CHANGE', entity: 'hackathon', entityId: hackathonId, details: { status: newStatus } });
+    await redisClient.del('events:active');
+    return updated;
+  }
+
+  async cancelEvent(hackathonId, organizerId, reason = null) {
+    const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId } });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    if (hackathon.status === 'JUDGING' || hackathon.status === 'COMPLETED') {
+      throw new AppError(`Hackathons in the ${hackathon.status} phase cannot be cancelled. Intellectual Property has already been submitted.`, 403);
+    }
+
+    if (hackathon.status === 'IN_PROGRESS' && !reason) {
+      throw new AppError('A reason is required to cancel a hackathon that is currently in progress.', 400);
+    }
+
+    // Use a transaction to update hackathon and cascade to registrations
+    const updated = await prisma.$transaction(async (tx) => {
+      // 1. Cancel the hackathon
+      const h = await tx.hackathon.update({
+        where: { id: hackathonId },
+        data: { status: 'CANCELLED' }
+      });
+
+      // 2. Cascade withdrawal to all registrations so participant dashboards reflect the voided status
+      await tx.registration.updateMany({
+        where: { hackathonId, status: 'REGISTERED' },
+        data: { status: 'WITHDRAWN' }
+      });
+
+      return h;
+    });
+
+    eventBus.emit('audit:log', { 
+      actorId: organizerId, 
+      action: 'STATUS_CHANGE', 
+      entity: 'hackathon', 
+      entityId: hackathonId, 
+      details: { status: 'CANCELLED', reason } 
+    });
+    
+    await redisClient.del('events:active');
+    return updated;
+  }
+
+  async suspendEvent(hackathonId, organizerId, reason) {
+    if (!reason) throw new AppError('A reason is required to suspend a hackathon.', 400);
+
+    const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId } });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    const updated = await prisma.hackathon.update({
+      where: { id: hackathonId },
+      data: { status: 'SUSPENDED' }
+    });
+    eventBus.emit('audit:log', { actorId: organizerId, action: 'STATUS_CHANGE', entity: 'hackathon', entityId: hackathonId, details: { status: 'SUSPENDED', reason } });
+    await redisClient.del('events:active');
+    return updated;
+  }
+
+  async resumeEvent(hackathonId, organizerId) {
+    const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId } });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    if (hackathon.status !== 'SUSPENDED') {
+      throw new AppError('Only suspended hackathons can be resumed.', 400);
+    }
+
+    const newStatus = this._calculateCurrentPhase(hackathon);
+
+    const updated = await prisma.hackathon.update({
+      where: { id: hackathonId },
+      data: { status: newStatus }
+    });
+    
+    eventBus.emit('audit:log', { 
+      actorId: organizerId, 
+      action: 'STATUS_CHANGE', 
+      entity: 'hackathon', 
+      entityId: hackathonId, 
+      details: { status: newStatus, reason: 'Resumed from suspension' } 
+    });
+    
+    await redisClient.del('events:active');
+    return updated;
+  }
+
+  async updateSchedule(hackathonId, organizerId, scheduleData) {
+    const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId } });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    // Save the new dates
+    const mergedData = { ...hackathon, ...scheduleData };
+    
+    // Only recalculate phase if the event is in an active lifecycle state
+    const inactiveStates = ['DRAFT', 'COMPLETED', 'CANCELLED', 'SUSPENDED', 'ARCHIVED'];
+    let newStatus = hackathon.status;
+
+    if (!inactiveStates.includes(hackathon.status)) {
+      newStatus = this._calculateCurrentPhase(mergedData);
+    }
+
+    const updated = await prisma.hackathon.update({
+      where: { id: hackathonId },
+      data: { 
+        ...scheduleData,
+        status: newStatus 
+      }
+    });
+
+    eventBus.emit('audit:log', { 
+      actorId: organizerId, 
+      action: 'SCHEDULE_UPDATED', 
+      entity: 'hackathon', 
+      entityId: hackathonId, 
+      details: { updatedFields: Object.keys(scheduleData), newStatus } 
+    });
+
+    await redisClient.del('events:active');
+    return updated;
+  }
+
+  _calculateCurrentPhase(hackathon) {
+    const now = new Date();
+    let calculatedStatus = 'UPCOMING';
+
+    if (hackathon.registrationStart && now >= hackathon.registrationStart) {
+      calculatedStatus = 'REGISTRATION_OPEN';
+    }
+
+    const regCutoff = hackathon.registrationEnd || hackathon.eventStart;
+    if (regCutoff && now >= regCutoff) {
+      calculatedStatus = 'REGISTRATION_CLOSED';
+    }
+
+    if (hackathon.eventStart && now >= hackathon.eventStart) {
+      calculatedStatus = 'IN_PROGRESS';
+    }
+
+    if (hackathon.submissionDeadline && now >= hackathon.submissionDeadline) {
+      calculatedStatus = 'JUDGING';
+    }
+
+    if (hackathon.judgingEnd && now >= hackathon.judgingEnd) {
+      calculatedStatus = 'COMPLETED';
+    }
+
+    return calculatedStatus;
+  }
+
+  async getQuickStats(hackathonId) {
+    // 2026 Enterprise Standard: Optimized DB aggregations for live dashboard
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { maxParticipants: true, status: true }
+    });
+    
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    const registrationStats = await prisma.registration.groupBy({
+      by: ['status'],
+      where: { hackathonId },
+      _count: { status: true }
+    });
+
+    const teamCount = await prisma.team.count({
+      where: { hackathonId }
+    });
+
+    const submissionCount = await prisma.submission.count({
+      where: { hackathonId }
+    });
+
+    // Format the group by results
+    const counts = {
+      REGISTERED: 0,
+      CHECKED_IN: 0,
+      WITHDRAWN: 0
+    };
+
+    registrationStats.forEach(stat => {
+      counts[stat.status] = stat._count.status;
+    });
+
+    return {
+      eventStatus: hackathon.status,
+      capacity: {
+        max: hackathon.maxParticipants,
+        current: counts.REGISTERED + counts.CHECKED_IN,
+        waitlisted: 0 // Placeholder for future waitlist feature
+      },
+      registrations: counts,
+      teams: teamCount,
+      submissions: submissionCount,
+      timestamp: new Date()
+    };
+  }
+
+  async completeEvent(hackathonId, organizerId) {
+    const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId } });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    const updated = await prisma.hackathon.update({
+      where: { id: hackathonId },
+      data: { status: 'COMPLETED' }
+    });
+    eventBus.emit('audit:log', { actorId: organizerId, action: 'STATUS_CHANGE', entity: 'hackathon', entityId: hackathonId, details: { status: 'COMPLETED' } });
+    await redisClient.del('events:active');
+    return updated;
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
