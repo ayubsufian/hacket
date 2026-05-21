@@ -45,6 +45,21 @@ class ScoringNormalizationService {
       throw new AppError('Scoring criteria unavailable. Please try again.', 404);
     }
 
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, hackathonId: true, status: true },
+    });
+
+    if (!submission || submission.hackathonId !== criteria.hackathonId) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Submission does not belong to this judging criteria.', 400);
+    }
+
+    if (!['SUBMITTED', 'UNDER_REVIEW', 'SCORED'].includes(submission.status)) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Only submitted projects can be scored.', 400);
+    }
+
     // 2026 Security: Ensure the user is actually assigned as a JUDGE for this hackathon
     const staffAssignment = await prisma.staffAssignment.findFirst({
       where: {
@@ -58,6 +73,22 @@ class ScoringNormalizationService {
     if (!staffAssignment) {
       const AppError = require('../../utils/AppError');
       throw new AppError('Forbidden. You must be assigned as a JUDGE to evaluate submissions for this event.', 403);
+    }
+
+    if (criteria.hackathon.judgingMode === 'ASSIGNED_JUDGES') {
+      const assignment = await prisma.judgingAssignment.findUnique({
+        where: {
+          submissionId_judgeId: {
+            submissionId,
+            judgeId,
+          },
+        },
+      });
+
+      if (!assignment) {
+        const AppError = require('../../utils/AppError');
+        throw new AppError('Forbidden. You are not assigned to judge this submission.', 403);
+      }
     }
     if (value < 0 || value > criteria.maxScore) {
       const AppError = require('../../utils/AppError');
@@ -236,8 +267,8 @@ class ScoringNormalizationService {
       throw new AppError('Hackathon not found.', 404);
     }
 
-    if (hackathon.status !== 'JUDGING' && hackathon.status !== 'COMPLETED') {
-      throw new AppError('Feedback can only be released when the hackathon is in the Judging or Completed phase.', 400);
+    if (hackathon.status !== 'COMPLETED') {
+      throw new AppError('Feedback can only be released after judging has been completed.', 409);
     }
 
     // 1. Update all submissions to make feedback visible
@@ -246,15 +277,7 @@ class ScoringNormalizationService {
       data: { isFeedbackVisible: true }
     });
 
-    // 2. Mark hackathon as COMPLETED
-    if (hackathon.status !== 'COMPLETED') {
-      await prisma.hackathon.update({
-        where: { id: hackathonId },
-        data: { status: 'COMPLETED' }
-      });
-    }
-
-    // 3. Emit event to trigger the broadcast notification pipeline we just built!
+    // 2. Emit event to trigger the broadcast notification pipeline we just built!
     eventBus.emit('scores:published', { 
       hackathonId, 
       title: hackathon.title,
@@ -274,6 +297,130 @@ class ScoringNormalizationService {
   // ─────────────────────────────────────────────────────────────────────────
   // PRIVATE: Compute final weighted score for a single submission
   // ─────────────────────────────────────────────────────────────────────────
+
+  async setJudgingAssignments(hackathonId, assignments, assignedBy) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { id: true, status: true },
+    });
+
+    if (!hackathon) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Hackathon not found.', 404);
+    }
+
+    if (['COMPLETED', 'ARCHIVED'].includes(hackathon.status)) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Judging assignments cannot be changed after completion.', 409);
+    }
+
+    const uniqueAssignments = Array.from(
+      new Map(assignments.map((assignment) => (
+        [`${assignment.submissionId}:${assignment.judgeId}`, assignment]
+      ))).values(),
+    );
+
+    const submissionIds = [...new Set(uniqueAssignments.map((assignment) => assignment.submissionId))];
+    const judgeIds = [...new Set(uniqueAssignments.map((assignment) => assignment.judgeId))];
+
+    const [submissionCount, activeJudgeCount] = await Promise.all([
+      prisma.submission.count({
+        where: {
+          id: { in: submissionIds },
+          hackathonId,
+          status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SCORED'] },
+        },
+      }),
+      prisma.staffAssignment.count({
+        where: {
+          hackathonId,
+          userId: { in: judgeIds },
+          staffRole: 'JUDGE',
+          isActive: true,
+        },
+      }),
+    ]);
+
+    if (submissionCount !== submissionIds.length) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('All assigned submissions must belong to this hackathon and be submitted.', 400);
+    }
+
+    if (activeJudgeCount !== judgeIds.length) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('All assigned judges must be active judges for this hackathon.', 400);
+    }
+
+    await prisma.$transaction([
+      prisma.judgingAssignment.deleteMany({ where: { hackathonId } }),
+      ...uniqueAssignments.map((assignment) => (
+        prisma.judgingAssignment.create({
+          data: {
+            hackathonId,
+            submissionId: assignment.submissionId,
+            judgeId: assignment.judgeId,
+            assignedBy,
+          },
+        })
+      )),
+    ]);
+
+    eventBus.emit('audit:log', {
+      actorId: assignedBy,
+      action: 'UPDATE',
+      entity: 'hackathon',
+      entityId: hackathonId,
+      details: {
+        action: 'judging_assignments_updated',
+        assignmentCount: uniqueAssignments.length,
+      },
+    });
+
+    return this.getJudgingAssignments(hackathonId);
+  }
+
+  async getJudgingAssignments(hackathonId, { judgeId = null } = {}) {
+    const assignments = await prisma.judgingAssignment.findMany({
+      where: {
+        hackathonId,
+        ...(judgeId ? { judgeId } : {}),
+      },
+      include: {
+        submission: {
+          select: {
+            id: true,
+            title: true,
+            team: { select: { name: true } },
+          },
+        },
+        judge: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: { firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+      orderBy: [{ submissionId: 'asc' }, { judgeId: 'asc' }],
+    });
+
+    return assignments.map((assignment) => ({
+      id: assignment.id,
+      submissionId: assignment.submissionId,
+      submissionTitle: assignment.submission.title,
+      teamName: assignment.submission.team?.name || null,
+      judgeId: assignment.judgeId,
+      judgeEmail: assignment.judge.email,
+      judgeName: [
+        assignment.judge.profile?.firstName,
+        assignment.judge.profile?.lastName,
+      ].filter(Boolean).join(' ') || null,
+      assignedAt: assignment.assignedAt,
+      assignedBy: assignment.assignedBy,
+    }));
+  }
 
   /**
    * @param {Array} scores - Score records for one submission

@@ -5,6 +5,7 @@
 const prisma = require('../config/database');
 const eventBus = require('../utils/eventBus');
 const { redisClient } = require('../config/redis');
+const eventsService = require('../services/events/events.service');
 
 class SchedulerWorker {
   constructor() {
@@ -12,7 +13,9 @@ class SchedulerWorker {
     this.POLL_RATE_MS = 1000 * 60; // Every 1 minute for demo
     // Track notified hackathons with timestamps (auto-prunes to prevent memory leak)
     this.notifiedHackathons = new Map(); // hackathonId -> timestamp
+    this.blockedCompletionHackathons = new Map(); // hackathonId -> timestamp
     this.PRUNE_AFTER_MS = 48 * 60 * 60 * 1000; // Prune after 48 hours
+    this.BLOCKED_COMPLETION_RETRY_MS = 5 * 60 * 1000;
   }
 
   start() {
@@ -37,10 +40,12 @@ class SchedulerWorker {
         select: {
           id: true,
           status: true,
+          registrationStart: true,
           registrationEnd: true,
           eventStart: true,
           submissionDeadline: true,
-          judgingEnd: true
+          judgingEnd: true,
+          requiredReviewsPerSubmission: true
         }
       });
 
@@ -81,10 +86,76 @@ class SchedulerWorker {
         }
 
         if (newStatus && newStatus !== h.status) {
+          if (newStatus === 'COMPLETED') {
+            const lastBlockedAt = this.blockedCompletionHackathons.get(h.id);
+            if (lastBlockedAt && Date.now() - lastBlockedAt < this.BLOCKED_COMPLETION_RETRY_MS) {
+              continue;
+            }
+
+            try {
+              if (h.status !== 'JUDGING') {
+                const activeJudges = await prisma.staffAssignment.count({
+                  where: {
+                    hackathonId: h.id,
+                    staffRole: 'JUDGE',
+                    isActive: true,
+                  },
+                });
+                console.log(`[Scheduler] Auto-transitioning hackathon ${h.id} from ${h.status} to JUDGING before completion checks.`);
+                await prisma.hackathon.update({
+                  where: { id: h.id },
+                  data: {
+                    status: 'JUDGING',
+                    judgingPhase: 'IN_PROGRESS',
+                    effectiveRequiredReviewsPerSubmission: Math.min(
+                      h.requiredReviewsPerSubmission || 3,
+                      activeJudges,
+                    ),
+                  }
+                });
+                eventBus.emit('audit:log', {
+                  actorId: null,
+                  action: 'STATUS_CHANGE',
+                  entity: 'hackathon',
+                  entityId: h.id,
+                  details: { status: 'JUDGING', reason: 'Automated submission deadline cutoff reached' }
+                });
+              }
+
+              console.log(`[Scheduler] Attempting completion for hackathon ${h.id} after judging deadline.`);
+              await eventsService.completeEvent(h.id, null, { source: 'SCHEDULER' });
+              this.blockedCompletionHackathons.delete(h.id);
+              stateChanged = true;
+            } catch (err) {
+              if (err.statusCode === 409) {
+                this.blockedCompletionHackathons.set(h.id, Date.now());
+                console.warn(`[Scheduler] Hackathon ${h.id} remains in JUDGING: ${err.message}`);
+                continue;
+              }
+              throw err;
+            }
+            continue;
+          }
+
           console.log(`[Scheduler] Auto-transitioning hackathon ${h.id} from ${h.status} to ${newStatus}`);
+          const transitionData = { status: newStatus };
+          if (newStatus === 'JUDGING') {
+            const activeJudges = await prisma.staffAssignment.count({
+              where: {
+                hackathonId: h.id,
+                staffRole: 'JUDGE',
+                isActive: true,
+              },
+            });
+            transitionData.judgingPhase = 'IN_PROGRESS';
+            transitionData.effectiveRequiredReviewsPerSubmission = Math.min(
+              h.requiredReviewsPerSubmission || 3,
+              activeJudges,
+            );
+          }
           await prisma.hackathon.update({
             where: { id: h.id },
-            data: { status: newStatus }
+            data: transitionData
           });
           eventBus.emit('audit:log', {
             actorId: 'SYSTEM_SCHEDULER',
@@ -151,6 +222,11 @@ class SchedulerWorker {
       for (const [id, timestamp] of this.notifiedHackathons) {
         if (timestamp < cutoff) {
           this.notifiedHackathons.delete(id);
+        }
+      }
+      for (const [id, timestamp] of this.blockedCompletionHackathons) {
+        if (timestamp < cutoff) {
+          this.blockedCompletionHackathons.delete(id);
         }
       }
     } catch (err) {

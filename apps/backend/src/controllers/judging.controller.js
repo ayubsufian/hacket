@@ -109,6 +109,36 @@ exports.releaseFeedback = catchAsync(async (req, res) => {
   });
 });
 
+exports.setAssignments = catchAsync(async (req, res) => {
+  const assignments = await scoringService.setJudgingAssignments(
+    req.params.hackathonId,
+    req.body.assignments,
+    req.user.id
+  );
+
+  res.status(200).json({
+    success: true,
+    message: 'Judging assignments updated.',
+    data: { assignments },
+  });
+});
+
+exports.getAssignments = catchAsync(async (req, res) => {
+  const assignments = await scoringService.getJudgingAssignments(
+    req.params.hackathonId,
+    {
+      judgeId: req.eventStaffRole === 'JUDGE' && req.user.role !== 'ADMIN'
+        ? req.user.id
+        : null,
+    }
+  );
+
+  res.status(200).json({
+    success: true,
+    data: { assignments },
+  });
+});
+
 exports.getScoreBreakdown = catchAsync(async (req, res) => {
   const result = await scoringService.getScoreBreakdown(
     req.params.submissionId,

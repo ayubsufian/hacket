@@ -236,11 +236,16 @@ exports.cancel = catchAsync(async (req, res) => {
 });
 
 exports.complete = catchAsync(async (req, res) => {
-  const hackathon = await eventsService.completeEvent(req.params.id, req.user.id);
+  const result = await eventsService.completeEvent(req.params.id, req.user.id, {
+    reason: req.body.reason,
+    source: 'MANUAL',
+  });
   res.status(200).json({
     success: true,
-    message: 'Hackathon marked as completed.',
-    data: { hackathon },
+    message: result.completion.completedEarly
+      ? 'Hackathon judging completed early.'
+      : 'Hackathon judging completed.',
+    data: result,
   });
 });
 

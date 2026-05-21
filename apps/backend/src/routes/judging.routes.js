@@ -33,6 +33,15 @@ const criteriaSchema = Joi.object({
   sortOrder: Joi.number().integer().default(0),
 });
 
+const assignmentSchema = Joi.object({
+  assignments: Joi.array().items(
+    Joi.object({
+      submissionId: Joi.string().uuid().required(),
+      judgeId: Joi.string().uuid().required(),
+    })
+  ).required(),
+});
+
 // ── Routes ──────────────────────────────────────────────────────────────
 
 router.use(authenticate);
@@ -48,6 +57,19 @@ router.post(
 router.delete(
   '/criteria/:id',
   judgingController.removeCriteria
+);
+
+router.put(
+  '/assignments/:hackathonId',
+  authorizeEventStaff('CO_ORGANIZER', 'TECHNICAL_LEAD'),
+  validate(assignmentSchema),
+  judgingController.setAssignments
+);
+
+router.get(
+  '/assignments/:hackathonId',
+  authorizeEventStaff('CO_ORGANIZER', 'TECHNICAL_LEAD', 'JUDGE'),
+  judgingController.getAssignments
 );
 
 // Judges submit scores

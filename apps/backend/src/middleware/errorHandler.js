@@ -112,6 +112,10 @@ const errorHandler = (err, req, res, next) => {
     response.details = details;
   }
 
+  if (err.data) {
+    response.data = err.data;
+  }
+
   // Include stack trace in development only
   if (process.env.NODE_ENV !== 'production' && err.stack) {
     response.stack = err.stack;

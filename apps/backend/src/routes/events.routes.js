@@ -40,6 +40,10 @@ const createSchema = Joi.object({
   submissionDeadline: Joi.date().iso().allow(null),
   judgingStart: Joi.date().iso().allow(null),
   judgingEnd: Joi.date().iso().allow(null),
+  judgingMode: Joi.string()
+    .valid('ALL_JUDGES_ALL_SUBMISSIONS', 'ASSIGNED_JUDGES', 'MINIMUM_REVIEWS')
+    .default('MINIMUM_REVIEWS'),
+  requiredReviewsPerSubmission: Joi.number().integer().min(1).max(50).default(3),
   rules: Joi.string().allow(null, ''),
   rulesAm: Joi.string().allow(null, ''),
   prizes: Joi.object().allow(null),
@@ -56,6 +60,9 @@ const updateSchema = createSchema.fork(
   ['title'],
   (field) => field.optional()
 ).keys({
+  judgingMode: Joi.string()
+    .valid('ALL_JUDGES_ALL_SUBMISSIONS', 'ASSIGNED_JUDGES', 'MINIMUM_REVIEWS'),
+  requiredReviewsPerSubmission: Joi.number().integer().min(1).max(50),
   status: Joi.forbidden().messages({
     'any.unknown': 'Status updates must be performed via explicit transition endpoints (e.g., /publish, /complete).'
   })
@@ -73,6 +80,10 @@ const scheduleUpdateSchema = Joi.object({
 
 const cancelSchema = Joi.object({
   reason: Joi.string().max(500).allow(null, '')
+});
+
+const completeSchema = Joi.object({
+  reason: Joi.string().trim().max(1000).allow(null, ''),
 });
 
 const suspendSchema = Joi.object({
@@ -219,7 +230,7 @@ router.post(
   ensureVerified,
   ensureProfileComplete,
   authorizeEventStaff('CO_ORGANIZER'),
-  validateBody(cancelSchema),
+  validate(cancelSchema),
   eventsController.cancel
 );
 
@@ -229,6 +240,7 @@ router.post(
   ensureVerified,
   ensureProfileComplete,
   authorizeEventStaff('CO_ORGANIZER'),
+  validate(completeSchema),
   eventsController.complete
 );
 
@@ -238,7 +250,7 @@ router.post(
   ensureVerified,
   ensureProfileComplete,
   authorizeEventStaff('ADMIN', 'CO_ORGANIZER'),
-  validateBody(suspendSchema),
+  validate(suspendSchema),
   eventsController.suspend
 );
 

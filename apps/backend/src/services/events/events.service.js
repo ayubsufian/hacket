@@ -9,6 +9,7 @@ const eventBus = require('../../utils/eventBus');
 const { levenshteinDistance } = require('../../utils/levenshtein');
 const { categorizeDescription } = require('../../utils/categorizer');
 const { redisClient } = require('../../config/redis');
+const scoringService = require('../judging/scoring.service');
 
 class EventsService {
   /**
@@ -309,7 +310,7 @@ class EventsService {
     } else if (staffRole === 'COMMUNICATIONS') {
       allowedFields = ['title', 'titleAm', 'description', 'descriptionAm', 'coverImageUrl', 'websiteUrl', 'contactEmail', 'tags'];
     } else if (staffRole === 'TECHNICAL_LEAD') {
-      allowedFields = ['judgingStart', 'judgingEnd', 'rules', 'rulesAm', 'submissionDeadline'];
+      allowedFields = ['judgingStart', 'judgingEnd', 'judgingMode', 'requiredReviewsPerSubmission', 'rules', 'rulesAm', 'submissionDeadline'];
     } else if (staffRole === 'LOGISTICS') {
       allowedFields = ['eventStart', 'eventEnd', 'venue', 'region', 'isVirtual'];
     } else if (staffRole === 'FINANCE') {
@@ -369,10 +370,13 @@ class EventsService {
       };
     }
 
+    const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
+
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
       data: {
         ...updateData,
+        ...judgingStartData,
         tags: tagsPayload,
       },
       include: { tags: true },
@@ -911,9 +915,11 @@ class EventsService {
     const updatedData = { ...hackathon, status: newStatus };
     this._validatePublishingFields(updatedData);
 
+    const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
+
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
-      data: { status: newStatus }
+      data: { status: newStatus, ...judgingStartData }
     });
 
     eventBus.emit('audit:log', { actorId: organizerId, action: 'STATUS_CHANGE', entity: 'hackathon', entityId: hackathonId, details: { status: newStatus } });
@@ -987,9 +993,11 @@ class EventsService {
 
     const newStatus = this._calculateCurrentPhase(hackathon);
 
+    const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
+
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
-      data: { status: newStatus }
+      data: { status: newStatus, ...judgingStartData }
     });
     
     eventBus.emit('audit:log', { 
@@ -1019,10 +1027,13 @@ class EventsService {
       newStatus = this._calculateCurrentPhase(mergedData);
     }
 
+    const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
+
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
       data: { 
         ...scheduleData,
+        ...judgingStartData,
         status: newStatus 
       }
     });
@@ -1058,10 +1069,6 @@ class EventsService {
 
     if (hackathon.submissionDeadline && now >= hackathon.submissionDeadline) {
       calculatedStatus = 'JUDGING';
-    }
-
-    if (hackathon.judgingEnd && now >= hackathon.judgingEnd) {
-      calculatedStatus = 'COMPLETED';
     }
 
     return calculatedStatus;
@@ -1115,20 +1122,366 @@ class EventsService {
     };
   }
 
-  async completeEvent(hackathonId, organizerId) {
+  async completeEvent(hackathonId, organizerId, { reason = null, source = 'MANUAL' } = {}) {
     const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId } });
     if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    if (hackathon.status === 'COMPLETED') {
+      throw new AppError('Hackathon judging is already completed.', 409);
+    }
+
+    if (hackathon.status !== 'JUDGING') {
+      throw new AppError('Hackathon can only be completed from the JUDGING state.', 409);
+    }
+
+    if (!hackathon.judgingEnd) {
+      throw new AppError('Judging deadline must be configured before completing judging.', 409);
+    }
+
+    const now = new Date();
+    const completedEarly = now < new Date(hackathon.judgingEnd);
+    const normalizedReason = typeof reason === 'string' ? reason.trim() : '';
+
+    if (completedEarly && !normalizedReason) {
+      throw new AppError('A reason is required to complete judging before the judging deadline.', 400);
+    }
+
+    const scoringCompleteness = await this._getJudgingCompleteness(hackathonId);
+    if (!scoringCompleteness.isComplete) {
+      eventBus.emit('audit:log', {
+        actorId: source === 'SCHEDULER' ? null : organizerId,
+        action: 'WARNING_INSUFFICIENT_SCORES',
+        entity: 'hackathon',
+        entityId: hackathonId,
+        details: {
+          source,
+          attemptedStatus: 'COMPLETED',
+          completedEarly,
+          scoringCompleteness,
+        },
+      });
+
+      throw Object.assign(
+        new AppError('Judging cannot be completed because required scoring is incomplete.', 409),
+        {
+          data: {
+            status: 'SCORING_INCOMPLETE',
+            scoringCompleteness,
+          },
+        },
+      );
+    }
+
+    const leaderboard = scoringCompleteness.eligibleSubmissions > 0
+      ? await scoringService.normalizeAndRank(hackathonId)
+      : [];
 
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
       data: { status: 'COMPLETED' }
     });
-    eventBus.emit('audit:log', { actorId: organizerId, action: 'STATUS_CHANGE', entity: 'hackathon', entityId: hackathonId, details: { status: 'COMPLETED' } });
+    eventBus.emit('audit:log', {
+      actorId: source === 'SCHEDULER' ? null : organizerId,
+      action: 'STATUS_CHANGE',
+      entity: 'hackathon',
+      entityId: hackathonId,
+      details: {
+        status: 'COMPLETED',
+        source,
+        completedEarly,
+        reason: completedEarly ? normalizedReason : null,
+        scoringCompleteness: {
+          eligibleSubmissions: scoringCompleteness.eligibleSubmissions,
+          activeJudges: scoringCompleteness.activeJudges,
+          criteria: scoringCompleteness.criteria,
+          requiredScores: scoringCompleteness.requiredScores,
+          submittedScores: scoringCompleteness.submittedScores,
+        },
+      },
+    });
     await redisClient.del('events:active');
-    return updated;
+    return {
+      hackathon: updated,
+      completion: {
+        completedEarly,
+        reason: completedEarly ? normalizedReason : null,
+        completedAt: new Date(),
+        source,
+      },
+      scoringCompleteness,
+      leaderboard,
+    };
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  async _getJudgingCompleteness(hackathonId) {
+    const [hackathon, eligibleSubmissions, criteria, activeJudges, assignments] = await Promise.all([
+      prisma.hackathon.findUnique({
+        where: { id: hackathonId },
+        select: {
+          judgingMode: true,
+          requiredReviewsPerSubmission: true,
+          effectiveRequiredReviewsPerSubmission: true,
+        },
+      }),
+      prisma.submission.findMany({
+        where: {
+          hackathonId,
+          status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SCORED'] },
+        },
+        select: {
+          id: true,
+          title: true,
+          team: { select: { name: true } },
+        },
+        orderBy: { submittedAt: 'asc' },
+      }),
+      prisma.judgingCriteria.findMany({
+        where: { hackathonId },
+        select: { id: true, name: true },
+        orderBy: { sortOrder: 'asc' },
+      }),
+      prisma.staffAssignment.findMany({
+        where: {
+          hackathonId,
+          staffRole: 'JUDGE',
+          isActive: true,
+        },
+        select: {
+          userId: true,
+          user: {
+            select: {
+              email: true,
+              profile: {
+                select: { firstName: true, lastName: true },
+              },
+            },
+          },
+        },
+      }),
+      prisma.judgingAssignment.findMany({
+        where: { hackathonId },
+        select: {
+          submissionId: true,
+          judgeId: true,
+        },
+      }),
+    ]);
+
+    if (!hackathon) {
+      throw new AppError('Hackathon not found.', 404);
+    }
+
+    const judgeById = new Map(activeJudges.map((judge) => [judge.userId, judge]));
+    const assignmentMap = new Map();
+    for (const assignment of assignments) {
+      if (!assignmentMap.has(assignment.submissionId)) {
+        assignmentMap.set(assignment.submissionId, new Set());
+      }
+      assignmentMap.get(assignment.submissionId).add(assignment.judgeId);
+    }
+
+    const effectiveRequiredReviewsPerSubmission = hackathon.effectiveRequiredReviewsPerSubmission
+      ?? Math.min(hackathon.requiredReviewsPerSubmission || 3, activeJudges.length);
+
+    if (eligibleSubmissions.length === 0) {
+      return {
+        isComplete: true,
+        judgingMode: hackathon.judgingMode,
+        requiredReviewsPerSubmission: hackathon.requiredReviewsPerSubmission,
+        effectiveRequiredReviewsPerSubmission,
+        eligibleSubmissions: 0,
+        activeJudges: activeJudges.length,
+        criteria: criteria.length,
+        requiredScores: 0,
+        submittedScores: 0,
+        missingScores: [],
+      };
+    }
+
+    const setupProblems = [];
+    if (criteria.length === 0) setupProblems.push('NO_JUDGING_CRITERIA');
+    if (activeJudges.length === 0) setupProblems.push('NO_ACTIVE_JUDGES');
+    if (hackathon.judgingMode === 'MINIMUM_REVIEWS' && effectiveRequiredReviewsPerSubmission < 1) {
+      setupProblems.push('NO_EFFECTIVE_REVIEW_REQUIREMENT');
+    }
+    if (hackathon.judgingMode === 'ASSIGNED_JUDGES' && assignments.length === 0) {
+      setupProblems.push('NO_JUDGING_ASSIGNMENTS');
+    }
+
+    if (setupProblems.length > 0) {
+      return {
+        isComplete: false,
+        judgingMode: hackathon.judgingMode,
+        requiredReviewsPerSubmission: hackathon.requiredReviewsPerSubmission,
+        effectiveRequiredReviewsPerSubmission,
+        eligibleSubmissions: eligibleSubmissions.length,
+        activeJudges: activeJudges.length,
+        criteria: criteria.length,
+        requiredScores: 0,
+        submittedScores: 0,
+        setupProblems,
+        missingScores: [],
+      };
+    }
+
+    const scores = await prisma.score.findMany({
+      where: {
+        submissionId: { in: eligibleSubmissions.map((submission) => submission.id) },
+        judgeId: { in: activeJudges.map((judge) => judge.userId) },
+        criteriaId: { in: criteria.map((criterion) => criterion.id) },
+      },
+      select: {
+        submissionId: true,
+        judgeId: true,
+        criteriaId: true,
+      },
+    });
+
+    const completeReviewKeys = new Set();
+    const submittedScoreKeys = new Set(
+      scores.map((score) => `${score.submissionId}:${score.judgeId}:${score.criteriaId}`),
+    );
+    for (const submission of eligibleSubmissions) {
+      for (const judge of activeJudges) {
+        const hasAllCriteria = criteria.every((criterion) => (
+          submittedScoreKeys.has(`${submission.id}:${judge.userId}:${criterion.id}`)
+        ));
+        if (hasAllCriteria) {
+          completeReviewKeys.add(`${submission.id}:${judge.userId}`);
+        }
+      }
+    }
+
+    const missingScores = [];
+    const missingReviews = [];
+    let requiredScores = 0;
+
+    const expectedJudgeIdsForSubmission = (submissionId) => {
+      if (hackathon.judgingMode === 'ALL_JUDGES_ALL_SUBMISSIONS') {
+        return activeJudges.map((judge) => judge.userId);
+      }
+      if (hackathon.judgingMode === 'ASSIGNED_JUDGES') {
+        return Array.from(assignmentMap.get(submissionId) || []);
+      }
+      return activeJudges.map((judge) => judge.userId);
+    };
+
+    for (const submission of eligibleSubmissions) {
+      const expectedJudgeIds = expectedJudgeIdsForSubmission(submission.id);
+      const completeReviewJudgeIds = expectedJudgeIds.filter((judgeId) => (
+        completeReviewKeys.has(`${submission.id}:${judgeId}`)
+      ));
+
+      if (hackathon.judgingMode === 'MINIMUM_REVIEWS') {
+        if (completeReviewJudgeIds.length < effectiveRequiredReviewsPerSubmission) {
+          missingReviews.push({
+            submissionId: submission.id,
+            submissionTitle: submission.title,
+            teamName: submission.team?.name || null,
+            requiredCompleteReviews: effectiveRequiredReviewsPerSubmission,
+            completedReviews: completeReviewJudgeIds.length,
+          });
+        }
+        requiredScores += effectiveRequiredReviewsPerSubmission * criteria.length;
+        continue;
+      }
+
+      if (hackathon.judgingMode === 'ASSIGNED_JUDGES' && expectedJudgeIds.length === 0) {
+        missingReviews.push({
+          submissionId: submission.id,
+          submissionTitle: submission.title,
+          teamName: submission.team?.name || null,
+          requiredCompleteReviews: 1,
+          completedReviews: 0,
+          reason: 'NO_ASSIGNED_JUDGES',
+        });
+        continue;
+      }
+
+      requiredScores += expectedJudgeIds.length * criteria.length;
+
+      for (const judgeId of expectedJudgeIds) {
+        const judge = judgeById.get(judgeId);
+        if (!judge) {
+          missingReviews.push({
+            submissionId: submission.id,
+            submissionTitle: submission.title,
+            teamName: submission.team?.name || null,
+            judgeId,
+            reason: 'ASSIGNED_JUDGE_INACTIVE_OR_NOT_FOUND',
+          });
+          continue;
+        }
+        for (const criterion of criteria) {
+          const key = `${submission.id}:${judgeId}:${criterion.id}`;
+          if (!submittedScoreKeys.has(key)) {
+            missingScores.push({
+              submissionId: submission.id,
+              submissionTitle: submission.title,
+              teamName: submission.team?.name || null,
+              judgeId,
+              judgeEmail: judge.user.email,
+              judgeName: [
+                judge.user.profile?.firstName,
+                judge.user.profile?.lastName,
+              ].filter(Boolean).join(' ') || null,
+              criteriaId: criterion.id,
+              criteriaName: criterion.name,
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      isComplete: missingScores.length === 0 && missingReviews.length === 0,
+      judgingMode: hackathon.judgingMode,
+      requiredReviewsPerSubmission: hackathon.requiredReviewsPerSubmission,
+      effectiveRequiredReviewsPerSubmission,
+      eligibleSubmissions: eligibleSubmissions.length,
+      activeJudges: activeJudges.length,
+      criteria: criteria.length,
+      requiredScores,
+      submittedScores: scores.length,
+      missingScores,
+      missingReviews,
+    };
+  }
+
+  async _buildJudgingStartData(hackathonId, previousStatus, nextStatus) {
+    if (nextStatus !== 'JUDGING' || previousStatus === 'JUDGING') {
+      return {};
+    }
+
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: {
+        requiredReviewsPerSubmission: true,
+      },
+    });
+
+    if (!hackathon) {
+      throw new AppError('Hackathon not found.', 404);
+    }
+
+    const activeJudges = await prisma.staffAssignment.count({
+      where: {
+        hackathonId,
+        staffRole: 'JUDGE',
+        isActive: true,
+      },
+    });
+
+    return {
+      judgingPhase: 'IN_PROGRESS',
+      effectiveRequiredReviewsPerSubmission: Math.min(
+        hackathon.requiredReviewsPerSubmission || 3,
+        activeJudges,
+      ),
+    };
+  }
 
   _validatePublishingFields(data) {
     if (data.status !== 'REGISTRATION_OPEN') return;
