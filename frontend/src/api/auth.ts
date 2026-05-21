@@ -6,7 +6,7 @@ export interface RegisterInput {
   password: string
   firstName: string
   lastName: string
-  role?: 'PARTICIPANT' | 'ORGANIZER' | 'JUDGE' | 'MENTOR'
+  role?: 'PARTICIPANT' | 'ORGANIZER'
 }
 
 export async function login(input: { email: string; password: string }) {
@@ -49,5 +49,13 @@ export async function requestPasswordReset(input: { email: string }) {
   return apiRequest<null>('/auth/forgot-password', {
     method: 'POST',
     body: JSON.stringify(input),
+  })
+}
+
+export async function acceptStaffInvitation(eventId: string, token: string) {
+  return apiRequest<{ message: string }>(`/events/${eventId}/staff/invitations/accept`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ token }),
   })
 }

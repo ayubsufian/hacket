@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, Loader2, Mail, Lock, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { getDashboardRoute } from '../utils/appState'
@@ -7,6 +7,7 @@ import { useToast } from '../contexts/ToastContext'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { login } = useAuth()
   const { success, error: toastError } = useToast()
   const [email, setEmail] = useState('')
@@ -35,7 +36,8 @@ export default function LoginPage() {
     try {
       const user = await login(email.trim().toLowerCase(), password)
       success('Welcome back. You are now signed in.')
-      navigate(getDashboardRoute(user.role), { replace: true })
+      const redirect = searchParams.get('redirect')
+      navigate(redirect ?? getDashboardRoute(user.role), { replace: true })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to sign in right now.'
       setFormError(message)

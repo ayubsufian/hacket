@@ -19,6 +19,7 @@ import NotificationsPage from './pages/NotificationsPage'
 import AdminPage from './pages/AdminPage'
 import OrganizerDashboard from './pages/OrganizerDashboard'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import AcceptInvitationPage from './pages/AcceptInvitationPage'
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/staff/accept-invitation" element={<AcceptInvitationPage />} />
               <Route path="/events" element={<EventsPage />} />
               <Route path="/events/:id" element={<EventDetailsPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />

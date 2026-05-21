@@ -6,13 +6,11 @@ import type { RegisterInput } from '../api/auth'
 import { getDashboardRoute } from '../utils/appState'
 import { useToast } from '../contexts/ToastContext'
 
-type Role = 'PARTICIPANT' | 'ORGANIZER' | 'JUDGE' | 'MENTOR'
+type Role = 'PARTICIPANT' | 'ORGANIZER'
 
 const roles = [
   { id: 'PARTICIPANT' as Role, title: 'Participant', desc: 'Join hackathons' },
   { id: 'ORGANIZER' as Role, title: 'Organizer', desc: 'Host events' },
-  { id: 'JUDGE' as Role, title: 'Judge', desc: 'Score projects' },
-  { id: 'MENTOR' as Role, title: 'Mentor', desc: 'Guide teams' },
 ]
 
 export default function SignupPage() {
@@ -134,6 +132,9 @@ export default function SignupPage() {
                     </p>
                   </button>
                 ))}
+              </div>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                <span className="font-semibold">Judges &amp; Mentors</span> join by invitation only — check your email for an invite from the event organizer.
               </div>
               <button
                 type="button"

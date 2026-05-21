@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight } from 'lucide-react'
+import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { listEvents, createEvent } from '../api/events'
+import { listEvents, createEvent, deleteEvent } from '../api/events'
+import { normalizeScores } from '../api/judging'
+import { exportAnalyticsReport } from '../api/analytics'
 import { useAuth } from '../contexts/AuthContext'
 import type { Hackathon } from '../types/models'
 
@@ -15,6 +17,10 @@ export default function OrganizerDashboard() {
     const [form, setForm] = useState({ title: '', description: '', region: '', start: '', end: '', min: 1, max: 4 })
     const [creating, setCreating] = useState(false)
     const [createError, setCreateError] = useState<string | null>(null)
+    const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [normalizingId, setNormalizingId] = useState<string | null>(null)
+    const [exportingId, setExportingId] = useState<string | null>(null)
+    const [actionMsg, setActionMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
     const load = async () => {
         try {
@@ -84,6 +90,42 @@ export default function OrganizerDashboard() {
         } finally { setCreating(false) }
     }
 
+    const handleDelete = async (ev: Hackathon) => {
+        if (!confirm(`Delete "${ev.title}"? This cannot be undone.`)) return
+        try {
+            setDeletingId(ev.id)
+            setActionMsg(null)
+            await deleteEvent(ev.id)
+            setActionMsg({ type: 'ok', text: `"${ev.title}" deleted.` })
+            await load()
+        } catch (err: any) {
+            setActionMsg({ type: 'err', text: err.message || 'Delete failed.' })
+        } finally { setDeletingId(null) }
+    }
+
+    const handleNormalize = async (ev: Hackathon) => {
+        try {
+            setNormalizingId(ev.id)
+            setActionMsg(null)
+            await normalizeScores(ev.id)
+            setActionMsg({ type: 'ok', text: `Scores normalized for "${ev.title}".` })
+        } catch (err: any) {
+            setActionMsg({ type: 'err', text: err.message || 'Normalization failed.' })
+        } finally { setNormalizingId(null) }
+    }
+
+    const handleExport = async (ev: Hackathon) => {
+        try {
+            setExportingId(ev.id)
+            setActionMsg(null)
+            const result = await exportAnalyticsReport(ev.id, 'csv')
+            if (result.url) window.open(result.url, '_blank')
+            else setActionMsg({ type: 'ok', text: 'Export ready.' })
+        } catch (err: any) {
+            setActionMsg({ type: 'err', text: err.message || 'Export failed.' })
+        } finally { setExportingId(null) }
+    }
+
     if (!isAuthenticated || (user?.role !== 'ORGANIZER' && user?.role !== 'ADMIN')) return (
         <div className="py-20 text-center"><h1 className="text-xl font-bold text-gray-900">Access Denied</h1><p className="mt-2 text-gray-500">Only organizers can access this page.</p></div>
     )
@@ -141,25 +183,60 @@ export default function OrganizerDashboard() {
                 </div>
             )}
 
+            {actionMsg && (
+                <div className={`px-5 py-3 rounded-lg text-sm font-medium ${actionMsg.type === 'ok' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                    {actionMsg.text}
+                </div>
+            )}
+
             <div className="card-elevated border border-gray-100 overflow-hidden bg-white">
                 <div className="border-b border-gray-100 p-5 bg-gray-50/50"><h2 className="text-lg font-bold text-gray-900">Your Hackathons</h2></div>
                 <div className="divide-y divide-gray-100">
                     {loading ? <div className="p-12 text-center text-gray-400"><Loader2 className="animate-spin mx-auto text-accent-500" size={32} /></div> : events.length === 0 ? <p className="p-12 text-center text-gray-500">You haven't created any events yet.</p> : events.map(ev => (
-                        <Link key={ev.id} to={`/events/${ev.id}`} className="block p-5 hover:bg-gray-50 transition-colors group">
-                            <div className="flex items-center justify-between">
-                                <div>
+                        <div key={ev.id} className="p-5 hover:bg-gray-50 transition-colors group">
+                            <div className="flex items-start justify-between gap-4">
+                                <Link to={`/events/${ev.id}`} className="flex-1 min-w-0">
                                     <div className="flex items-center gap-3 mb-1.5">
                                         <span className={`badge ${ev.status === 'REGISTRATION_OPEN' ? 'badge-green' : ev.status === 'DRAFT' ? 'badge-yellow' : 'badge-gray'}`}>{ev.status.replace(/_/g, ' ')}</span>
                                     </div>
-                                    <h3 className="font-bold text-gray-900 group-hover:text-accent-600 transition-colors text-lg">{ev.title}</h3>
+                                    <h3 className="font-bold text-gray-900 group-hover:text-accent-600 transition-colors text-lg truncate">{ev.title}</h3>
                                     <div className="mt-2 flex items-center gap-4 text-xs text-gray-500 font-medium">
                                         <span className="flex items-center gap-1"><Calendar size={14} className="text-gray-400" /> {new Date(ev.eventStart).toLocaleDateString()}</span>
                                         <span className="flex items-center gap-1"><MapPin size={14} className="text-gray-400" /> {ev.region || 'Virtual'}</span>
                                     </div>
+                                </Link>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        onClick={() => void handleNormalize(ev)}
+                                        disabled={normalizingId === ev.id}
+                                        title="Normalize scores"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50 transition-colors"
+                                    >
+                                        {normalizingId === ev.id ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
+                                        Normalize
+                                    </button>
+                                    <button
+                                        onClick={() => void handleExport(ev)}
+                                        disabled={exportingId === ev.id}
+                                        title="Export analytics as CSV"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-emerald-200 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+                                    >
+                                        {exportingId === ev.id ? <Loader2 size={13} className="animate-spin" /> : <BarChart2 size={13} />}
+                                        Export
+                                    </button>
+                                    <button
+                                        onClick={() => void handleDelete(ev)}
+                                        disabled={deletingId === ev.id}
+                                        title="Delete event"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                                    >
+                                        {deletingId === ev.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                        Delete
+                                    </button>
+                                    <Link to={`/events/${ev.id}`}><ChevronRight className="text-gray-300 group-hover:text-accent-500 transition-all" /></Link>
                                 </div>
-                                <ChevronRight className="text-gray-300 group-hover:text-accent-500 group-hover:translate-x-1 transition-all" />
                             </div>
-                        </Link>
+                        </div>
                     ))}
                 </div>
             </div>

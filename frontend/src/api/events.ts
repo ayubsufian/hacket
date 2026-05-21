@@ -61,3 +61,10 @@ export async function updateEvent(eventId: string, input: Record<string, unknown
   })
   return response.data.hackathon
 }
+
+export async function deleteEvent(eventId: string) {
+  return apiRequest<null>(`/events/${eventId}`, {
+    method: 'DELETE',
+    auth: true,
+  })
+}

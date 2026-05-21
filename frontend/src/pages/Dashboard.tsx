@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, Trophy, ChevronRight, Activity, FileText } from 'lucide-react'
+import { Calendar, Trophy, ChevronRight, Activity, FileText, Sparkles } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { listEvents } from '../api/events'
 import { getLeaderboard } from '../api/judging'
 import { listSubmissionsByHackathon } from '../api/submissions'
+import { recommendEvents, type EventRecommendation } from '../api/matching'
 import type { Hackathon, LeaderboardEntry, Submission } from '../types/models'
 
 export default function Dashboard() {
@@ -12,6 +13,7 @@ export default function Dashboard() {
   const [events, setEvents] = useState<Hackathon[]>([])
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
+  const [recommendations, setRecommendations] = useState<EventRecommendation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,13 +28,15 @@ export default function Dashboard() {
 
         if (evs.data.length > 0) {
           const firstId = evs.data[0].id
-          const [lb, subs] = await Promise.all([
+          const [lb, subs, recs] = await Promise.all([
             getLeaderboard(firstId, 1, 5).catch(() => ({ data: [] })),
-            listSubmissionsByHackathon(firstId).catch(() => ({ data: [] }))
+            listSubmissionsByHackathon(firstId).catch(() => ({ data: [] })),
+            recommendEvents().catch(() => [])
           ])
           if (!active) return
           setLeaderboard(lb.data)
           setSubmissions(subs.data)
+          setRecommendations(recs as EventRecommendation[])
         }
       } catch (err) {
         if (!active) return
@@ -86,6 +90,26 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+
+          {recommendations.length > 0 && (
+            <div className="card flex flex-col">
+              <div className="flex items-center justify-between border-b border-border p-4">
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Sparkles size={18} className="text-amber-400" /> Recommended for You</h2>
+                <Link to="/events" className="text-sm font-medium text-accent-600 hover:text-accent-700">See all</Link>
+              </div>
+              <div className="flex-1 divide-y divide-border">
+                {recommendations.slice(0, 4).map(rec => (
+                  <Link key={rec.hackathonId} to={`/events/${rec.hackathonId}`} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group">
+                    <div>
+                      <p className="font-medium text-gray-900 group-hover:text-accent-600 transition-colors">{rec.title}</p>
+                      <p className="text-xs text-gray-500 mt-1">{rec.tags.slice(0, 3).join(', ')}</p>
+                    </div>
+                    <span className="text-xs font-bold text-amber-500 bg-amber-50 px-2 py-1 rounded-full">{Math.round(rec.matchScore * 100)}% match</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="card flex flex-col">
