@@ -1,12 +1,12 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Loader2, User, Mail, Lock, CheckCircle2, Eye, EyeOff } from 'lucide-react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Loader2, User, Mail, Lock, CheckCircle2, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import type { RegisterInput } from '../api/auth'
 import { getDashboardRoute } from '../utils/appState'
 import { useToast } from '../contexts/ToastContext'
 
-type Role = 'PARTICIPANT' | 'ORGANIZER'
+type Role = 'PARTICIPANT' | 'ORGANIZER' | 'JUDGE' | 'MENTOR'
 
 const roles = [
   { id: 'PARTICIPANT' as Role, title: 'Participant', desc: 'Join hackathons' },
@@ -15,12 +15,17 @@ const roles = [
 
 export default function SignupPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { register } = useAuth()
   const { success, error: toastError } = useToast()
 
-  const [step, setStep] = useState<1 | 2>(1)
-  const [role, setRole] = useState<Role>('PARTICIPANT')
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' })
+  const inviteEmail = searchParams.get('email') ?? ''
+  const inviteRole = (searchParams.get('role') ?? '') as Role
+  const isInvited = (inviteRole === 'JUDGE' || inviteRole === 'MENTOR') && !!inviteEmail
+
+  const [step, setStep] = useState<1 | 2>(isInvited ? 2 : 1)
+  const [role, setRole] = useState<Role>(isInvited ? inviteRole : 'PARTICIPANT')
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: inviteEmail, password: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -146,19 +151,29 @@ export default function SignupPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Role indicator */}
-              <div className="flex items-center justify-between p-2 bg-emerald-50 rounded-lg">
-                <span className="text-sm text-emerald-700">
-                  Signing up as <span className="font-medium capitalize">{role.toLowerCase()}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="text-sm text-emerald-600 hover:text-emerald-800 font-medium"
-                >
-                  Change
-                </button>
-              </div>
+              {/* Role indicator / invite banner */}
+              {isInvited ? (
+                <div className="flex items-center gap-2.5 p-3 bg-violet-50 border border-violet-200 rounded-lg">
+                  <ShieldCheck size={16} className="text-violet-600 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-violet-800">Invited as {role}</p>
+                    <p className="text-xs text-violet-600 truncate">{inviteEmail}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-2 bg-emerald-50 rounded-lg">
+                  <span className="text-sm text-emerald-700">
+                    Signing up as <span className="font-medium capitalize">{role.toLowerCase()}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="text-sm text-emerald-600 hover:text-emerald-800 font-medium"
+                  >
+                    Change
+                  </button>
+                </div>
+              )}
 
               {/* Name fields */}
               <div className="grid grid-cols-2 gap-3">

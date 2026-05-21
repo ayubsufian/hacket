@@ -72,28 +72,53 @@ export default function EventDetailsPage() {
       </Link>
 
       <div className="card overflow-hidden">
-        <div className="h-32 bg-gradient-to-br from-accent-600 via-emerald-600 to-teal-800 relative">
-          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/micro-carbon.png')] opacity-20" />
-        </div>
-        <div className="px-6 py-8 sm:px-10 relative">
-          <div className="absolute -top-12 left-6 sm:left-10 h-24 w-24 rounded-2xl shadow-xl bg-white flex items-center justify-center border-4 border-surface p-2">
-            <Target size={40} className="text-accent-500" />
-          </div>
-
-          <div className="mt-10 sm:mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <span className={`badge ${isRegOpen ? 'badge-green' : event.status === 'IN_PROGRESS' ? 'badge-blue' : 'badge-gray'}`}>
-                  {event.status.replace(/_/g, ' ')}
-                </span>
-                {event.isVirtual ? (
-                  <span className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-teal-600"><MonitorPlay size={14} /> Virtual</span>
-                ) : (
-                  <span className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-indigo-600"><MapPin size={14} /> In-person</span>
-                )}
-              </div>
-              <h1 className="text-3xl font-extrabold text-gray-900">{event.title}</h1>
+        {/* Hero */}
+        <div className="relative h-52 sm:h-64 overflow-hidden">
+          {event.coverImageUrl ? (
+            <img
+              src={event.coverImageUrl}
+              alt={event.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-accent-600 via-emerald-600 to-teal-800 flex items-center justify-center">
+              <Target size={56} className="text-white/20" />
             </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+          {/* Badges on image */}
+          <div className="absolute top-4 left-4 flex items-center gap-2">
+            <span className={`badge shadow ${isRegOpen ? 'badge-green' : event.status === 'IN_PROGRESS' ? 'badge-blue' : 'badge-gray'}`}>
+              {event.status.replace(/_/g, ' ')}
+            </span>
+            {event.isVirtual ? (
+              <span className="flex items-center gap-1 text-xs font-semibold text-white bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full">
+                <MonitorPlay size={12} /> Virtual
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs font-semibold text-white bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full">
+                <MapPin size={12} /> In-person
+              </span>
+            )}
+          </div>
+          {/* Title on image */}
+          <div className="absolute bottom-4 left-6 right-6">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white drop-shadow-lg line-clamp-2">{event.title}</h1>
+          </div>
+        </div>
+
+        <div className="px-6 py-6 sm:px-10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            {/* Tags */}
+            {event.tags && event.tags.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {event.tags.slice(0, 5).map(tag => (
+                  <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {!isAuthenticated ? (
               <Link to="/signup" className="btn-primary flex-shrink-0">Sign up to register</Link>
@@ -110,7 +135,7 @@ export default function EventDetailsPage() {
           </div>
 
           {regMsg && (
-            <div className={`mt-6 ${regMsg.type === 'ok' ? 'alert-success' : 'alert-error'}`}>
+            <div className={`mt-4 ${regMsg.type === 'ok' ? 'alert-success' : 'alert-error'}`}>
               {regMsg.text}
             </div>
           )}

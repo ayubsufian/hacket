@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck } from 'lucide-react'
+import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck, ImageIcon, X, UserPlus, Copy, Check, Mail } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { listEvents, createEvent, deleteEvent } from '../api/events'
 import { normalizeScores } from '../api/judging'
@@ -14,13 +14,17 @@ export default function OrganizerDashboard() {
     const [error, setError] = useState<string | null>(null)
 
     const [showForm, setShowForm] = useState(false)
-    const [form, setForm] = useState({ title: '', description: '', region: '', start: '', end: '', min: 1, max: 4 })
+    const [form, setForm] = useState({ title: '', description: '', region: '', start: '', end: '', min: 1, max: 4, coverImageUrl: '' })
     const [creating, setCreating] = useState(false)
     const [createError, setCreateError] = useState<string | null>(null)
     const [deletingId, setDeletingId] = useState<string | null>(null)
     const [normalizingId, setNormalizingId] = useState<string | null>(null)
     const [exportingId, setExportingId] = useState<string | null>(null)
     const [actionMsg, setActionMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+    const [inviteEventId, setInviteEventId] = useState<string | null>(null)
+    const [inviteForm, setInviteForm] = useState({ email: '', role: 'JUDGE' as 'JUDGE' | 'MENTOR' })
+    const [generatedLink, setGeneratedLink] = useState('')
+    const [copied, setCopied] = useState(false)
 
     const load = async () => {
         try {
@@ -79,15 +83,36 @@ export default function OrganizerDashboard() {
                 minTeamSize: form.min,
                 isVirtual: !form.region.trim(),
                 region: form.region.trim() || null,
+                coverImageUrl: form.coverImageUrl.trim() || null,
                 prizes: null,
                 tags: []
             })
-            setForm({ title: '', description: '', region: '', start: '', end: '', min: 1, max: 4 })
+            setForm({ title: '', description: '', region: '', start: '', end: '', min: 1, max: 4, coverImageUrl: '' })
             setShowForm(false)
             await load()
         } catch (err: any) {
             setCreateError(err.message || 'Unable to create this event draft.')
         } finally { setCreating(false) }
+    }
+
+    const generateInviteLink = (eventId: string) => {
+        if (!inviteForm.email.trim()) return
+        const payload = btoa(JSON.stringify({ email: inviteForm.email.trim(), role: inviteForm.role, eventId, iat: Date.now() }))
+        const base = window.location.origin
+        setGeneratedLink(`${base}/staff/accept-invitation?token=${encodeURIComponent(payload)}&eventId=${encodeURIComponent(eventId)}`)
+    }
+
+    const copyLink = async () => {
+        if (!generatedLink) return
+        await navigator.clipboard.writeText(generatedLink)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2500)
+    }
+
+    const openInvitePanel = (eventId: string) => {
+        setInviteEventId(inviteEventId === eventId ? null : eventId)
+        setGeneratedLink('')
+        setInviteForm({ email: '', role: 'JUDGE' })
     }
 
     const handleDelete = async (ev: Hackathon) => {
@@ -167,6 +192,48 @@ export default function OrganizerDashboard() {
                             <div className="sm:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Event Title</label><input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="input-field" placeholder="National Future Builders Hackathon" /></div>
                             <div className="sm:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-gray-400 font-normal text-xs">(min 10 characters)</span></label><textarea required minLength={10} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="input-field h-24" placeholder="Describe the hackathon — themes, goals, eligibility..." /></div>
 
+                            {/* Cover Image */}
+                            <div className="sm:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5">
+                                    <ImageIcon size={14} className="text-gray-400" /> Cover Image URL
+                                    <span className="text-gray-400 font-normal text-xs ml-1">(optional)</span>
+                                </label>
+                                <div className="flex gap-3 items-start">
+                                    <div className="flex-1 relative">
+                                        <input
+                                            type="url"
+                                            value={form.coverImageUrl}
+                                            onChange={e => setForm({ ...form, coverImageUrl: e.target.value })}
+                                            className="input-field pr-9"
+                                            placeholder="https://example.com/cover.jpg"
+                                        />
+                                        {form.coverImageUrl && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setForm({ ...form, coverImageUrl: '' })}
+                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                            >
+                                                <X size={15} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                {form.coverImageUrl.trim() && (
+                                    <div className="mt-3 relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50" style={{ height: '140px' }}>
+                                        <img
+                                            src={form.coverImageUrl.trim()}
+                                            alt="Cover preview"
+                                            className="w-full h-full object-cover"
+                                            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                            onLoad={e => { (e.target as HTMLImageElement).style.display = 'block' }}
+                                        />
+                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                            <ImageIcon size={28} className="text-gray-300" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <div><label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5"><Calendar size={14} className="text-gray-400" /> Start Date</label><input type="datetime-local" required value={form.start} onChange={e => setForm({ ...form, start: e.target.value })} className="input-field" /></div>
                             <div><label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5"><Calendar size={14} className="text-gray-400" /> End Date</label><input type="datetime-local" required value={form.end} onChange={e => setForm({ ...form, end: e.target.value })} className="input-field" /></div>
 
@@ -233,9 +300,69 @@ export default function OrganizerDashboard() {
                                         {deletingId === ev.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                                         Delete
                                     </button>
+                                    <button
+                                        onClick={() => openInvitePanel(ev.id)}
+                                        title="Invite judge or mentor"
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${inviteEventId === ev.id ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-violet-200 text-violet-600 hover:bg-violet-50'}`}
+                                    >
+                                        <UserPlus size={13} /> Invite
+                                    </button>
                                     <Link to={`/events/${ev.id}`}><ChevronRight className="text-gray-300 group-hover:text-accent-500 transition-all" /></Link>
                                 </div>
                             </div>
+
+                            {inviteEventId === ev.id && (
+                                <div className="mt-4 p-4 rounded-xl border border-violet-100 bg-violet-50/60 space-y-3">
+                                    <p className="text-xs font-semibold text-violet-700 flex items-center gap-1.5">
+                                        <Mail size={13} /> Generate invitation link — <span className="font-bold truncate">{ev.title}</span>
+                                    </p>
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <input
+                                            type="email"
+                                            placeholder="invitee@email.com"
+                                            value={inviteForm.email}
+                                            onChange={e => { setInviteForm(f => ({ ...f, email: e.target.value })); setGeneratedLink('') }}
+                                            className="input-field flex-1 text-sm h-9"
+                                        />
+                                        <select
+                                            value={inviteForm.role}
+                                            onChange={e => { setInviteForm(f => ({ ...f, role: e.target.value as 'JUDGE' | 'MENTOR' })); setGeneratedLink('') }}
+                                            className="input-field !w-auto text-sm h-9"
+                                        >
+                                            <option value="JUDGE">Judge</option>
+                                            <option value="MENTOR">Mentor</option>
+                                        </select>
+                                        <button
+                                            type="button"
+                                            onClick={() => generateInviteLink(ev.id)}
+                                            disabled={!inviteForm.email.trim()}
+                                            className="h-9 px-4 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold disabled:opacity-40 transition-colors shrink-0"
+                                        >
+                                            Generate
+                                        </button>
+                                    </div>
+
+                                    {generatedLink && (
+                                        <div className="rounded-lg border border-violet-200 bg-white overflow-hidden">
+                                            <div className="flex items-center gap-2 px-3 py-2">
+                                                <p className="text-xs text-gray-500 truncate flex-1 font-mono">{generatedLink}</p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void copyLink()}
+                                                    className={`flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${copied ? 'bg-green-100 text-green-700' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}
+                                                >
+                                                    {copied ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy</>}
+                                                </button>
+                                            </div>
+                                            <div className="px-3 py-2 border-t border-violet-100 bg-violet-50/40">
+                                                <p className="text-xs text-violet-600">
+                                                    Send this link to <strong>{inviteForm.email}</strong>. They open it, sign in (or register), and their account gets the <strong>{inviteForm.role}</strong> role for this event.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>

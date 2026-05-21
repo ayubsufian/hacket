@@ -6,7 +6,7 @@ export interface RegisterInput {
   password: string
   firstName: string
   lastName: string
-  role?: 'PARTICIPANT' | 'ORGANIZER'
+  role?: 'PARTICIPANT' | 'ORGANIZER' | 'JUDGE' | 'MENTOR'
 }
 
 export async function login(input: { email: string; password: string }) {
