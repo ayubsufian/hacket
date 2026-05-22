@@ -237,6 +237,78 @@ class EmailService {
   }
 
   /**
+   * Send Staff Invitation Cancelled Notification
+   */
+  async sendStaffInvitationCancelledEmail(to, hackathonTitle, staffRole) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
+        <div style="background-color: #0f172a; padding: 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: bold;">Hack<span style="color: #10b981;">ET</span></h1>
+        </div>
+        <div style="padding: 32px; background-color: #ffffff; color: #334155;">
+          <h2 style="margin-top: 0; color: #0f172a;">Invitation Cancelled</h2>
+          <p>Hi there,</p>
+          <p>Your pending invitation to join <strong>${hackathonTitle}</strong> as a <strong>${staffRole}</strong> has been cancelled by the organizer.</p>
+          <p style="font-size: 14px; color: #64748b; margin-top: 24px; padding-top: 24px; border-top: 1px solid #eee;">
+            If you believe this was a mistake, please reach out to the event organizer directly.
+          </p>
+        </div>
+      </div>
+    `;
+
+    try {
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const info = await this.transporter.sendMail({
+          from: this.fromAddress,
+          to,
+          subject: `HackET - Your invitation for ${hackathonTitle} has been cancelled`,
+          html,
+        });
+        console.log(`[EmailService] Staff invitation cancelled email sent to ${to}. MessageId: ${info.messageId}`);
+      } else {
+        console.log(`[EmailService - MOCK MODE] Staff invitation cancelled email generated for ${to}.`);
+      }
+    } catch (error) {
+      console.error(`[EmailService] Failed to send staff invitation cancelled email to ${to}:`, error.message);
+    }
+  }
+
+  /**
+   * Send Account Verified Email
+   */
+  async sendAccountVerifiedEmail(to) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
+        <div style="background-color: #0f172a; padding: 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: bold;">Hack<span style="color: #10b981;">ET</span></h1>
+        </div>
+        <div style="padding: 32px; background-color: #ffffff; color: #334155;">
+          <h2 style="margin-top: 0; color: #0f172a;">Account Verified Successfully</h2>
+          <p>Hi there,</p>
+          <p>Great news! Your email address has been successfully verified.</p>
+          <p>You can now fully participate in hackathons on the HackET platform.</p>
+        </div>
+      </div>
+    `;
+
+    try {
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const info = await this.transporter.sendMail({
+          from: this.fromAddress,
+          to,
+          subject: 'HackET - Your account has been verified',
+          html,
+        });
+        console.log(`[EmailService] Account verified email sent to ${to}. MessageId: ${info.messageId}`);
+      } else {
+        console.log(`[EmailService - MOCK MODE] Account verified email generated for ${to}.`);
+      }
+    } catch (error) {
+      console.error(`[EmailService] Failed to send account verified email to ${to}:`, error.message);
+    }
+  }
+
+  /**
    * Send Account Suspension Notification
    */
   async sendAccountSuspendedEmail(to, reason) {
@@ -341,6 +413,14 @@ eventBus.on('email:staff_invitation', async ({ email, token, hackathonTitle, sta
   await emailService.sendStaffInvitationEmail(email, token, hackathonTitle, staffRole);
 });
 
+eventBus.on('email:staff_invitation_resend', async ({ email, token, hackathonTitle, staffRole }) => {
+  await emailService.sendStaffInvitationEmail(email, token, hackathonTitle, staffRole);
+});
+
+eventBus.on('email:staff_invitation_cancelled', async ({ email, hackathonTitle, staffRole }) => {
+  await emailService.sendStaffInvitationCancelledEmail(email, hackathonTitle, staffRole);
+});
+
 eventBus.on('email:staff_role_changed', async ({ email, firstName, hackathonTitle, oldRole, newRole }) => {
   await emailService.sendStaffRoleChangedEmail(email, firstName, hackathonTitle, oldRole, newRole);
 });
@@ -355,6 +435,10 @@ eventBus.on('email:account_suspended', async ({ email, reason }) => {
 
 eventBus.on('email:admin_provisioned', async ({ email, firstName, provisionedBy }) => {
   await emailService.sendAdminProvisionedEmail(email, firstName, provisionedBy);
+});
+
+eventBus.on('email:account_verified', async ({ email }) => {
+  await emailService.sendAccountVerifiedEmail(email);
 });
 
 module.exports = emailService;

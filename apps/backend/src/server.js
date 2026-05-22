@@ -41,7 +41,7 @@ const feedbacksRoutes = require('./routes/feedbacks.routes');
 const certificatesRoutes = require('./routes/certificates.routes');
 const adminRoutes = require('./routes/admin.routes');
 const searchRoutes = require('./routes/search.routes');
-const staffRoutes = require('./routes/staff.routes');
+const { eventRouter: staffEventRoutes, globalRouter: staffGlobalRoutes } = require('./routes/staff.routes');
 const storageRoutes = require('./routes/storage.routes');
 
 // ── Initialize Services (registers EventBus listeners) ──────────────────
@@ -113,7 +113,8 @@ app.use(`${API_PREFIX}/events/:eventId/feedbacks`, feedbacksRoutes);
 app.use(`${API_PREFIX}/certificates`, certificatesRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/search`, searchRoutes);
-app.use(`${API_PREFIX}/events/:eventId/staff`, staffRoutes);
+app.use(`${API_PREFIX}/events/:eventId/staff`, staffEventRoutes);
+app.use(`${API_PREFIX}/staff`, staffGlobalRoutes);
 app.use(`${API_PREFIX}/storage`, storageRoutes);
 
 // ── 404 Handler ─────────────────────────────────────────────────────────
