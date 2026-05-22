@@ -72,7 +72,7 @@ exports.login = catchAsync(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    message: 'Login successful.',
+    message: result.profileCompletionMessage || 'Login successful.',
     data: result,
   });
 });
@@ -98,7 +98,7 @@ exports.googleOAuth = catchAsync(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    message: 'Google OAuth login successful.',
+    message: result.profileCompletionMessage || 'Google OAuth login successful.',
     data: result,
   });
 });
@@ -133,7 +133,7 @@ exports.googleOrganizerOAuth = catchAsync(async (req, res) => {
 
   res.status(statusCode).json({
     success: true,
-    message: responseData.message,
+    message: responseData.profileCompletionMessage || responseData.message,
     data: responseData,
   });
 });
@@ -155,7 +155,7 @@ exports.githubOAuth = catchAsync(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    message: 'GitHub OAuth login successful.',
+    message: result.profileCompletionMessage || 'GitHub OAuth login successful.',
     data: result,
   });
 });
@@ -182,7 +182,7 @@ exports.githubOrganizerOAuth = catchAsync(async (req, res) => {
 
   res.status(statusCode).json({
     success: true,
-    message: responseData.message,
+    message: responseData.profileCompletionMessage || responseData.message,
     data: responseData,
   });
 });

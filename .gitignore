@@ -61,3 +61,4 @@ uploads/
 
 # Package Artifacts
 *.tgz
+.aider*

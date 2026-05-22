@@ -50,6 +50,7 @@ enum HackathonStatus {
 
 enum RegistrationStatus {
   REGISTERED
+  WAITLISTED
   CHECKED_IN
   WITHDRAWN
 }
@@ -104,6 +105,10 @@ enum AuditAction {
   ARCHIVE_FAILURE
   HACKATHON_ARCHIVED
   WARNING_INSUFFICIENT_SCORES
+  PARTICIPANT_KICKED
+  PARTICIPANT_CHECKIN
+  PARTICIPANT_UNDO_CHECKIN
+  SCHEDULE_UPDATED
 }
 
 enum StaffRole {
@@ -300,8 +305,8 @@ model User {
 model UserProfile {
   id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId                     String    @unique @map("user_id") @db.Uuid
-  firstName                  String    @map("first_name")
-  lastName                   String    @map("last_name")
+  firstName                  String?   @map("first_name")
+  lastName                   String?   @map("last_name")
   bio                        String?   @db.Text
   avatarUrl                  String?   @map("avatar_url")
   phone                      String?
@@ -336,7 +341,7 @@ model Hackathon {
   slug                  String          @unique @db.VarChar(255)
   title                 String          @db.VarChar(255)
   titleAm               String?         @map("title_am") @db.VarChar(255)
-  description           String          @db.Text
+  description           String?         @db.Text
   descriptionAm         String?         @map("description_am") @db.Text
   coverImageUrl         String?         @map("cover_image_url")
   status                HackathonStatus @default(DRAFT)
@@ -346,11 +351,13 @@ model Hackathon {
   maxTeamSize           Int             @default(5) @map("max_team_size")
   minTeamSize           Int             @default(1) @map("min_team_size")
   maxParticipants       Int?            @map("max_participants")
-  registrationStart     DateTime        @map("registration_start")
-  registrationEnd       DateTime        @map("registration_end")
-  eventStart            DateTime        @map("event_start")
-  eventEnd              DateTime        @map("event_end")
-  submissionDeadline    DateTime        @map("submission_deadline")
+  waitlistEnabled       Boolean         @default(true) @map("waitlist_enabled")
+  waitlistLimit         Int?            @map("waitlist_limit")
+  registrationStart     DateTime?       @map("registration_start")
+  registrationEnd       DateTime?       @map("registration_end")
+  eventStart            DateTime?       @map("event_start")
+  eventEnd              DateTime?       @map("event_end")
+  submissionDeadline    DateTime?       @map("submission_deadline")
   feedbackDeadline      DateTime?       @map("feedback_deadline")
   scoreboardReleaseAt   DateTime?       @map("scoreboard_release_at")
   scoreboardType        ScoreboardType  @default(FINAL_ONLY) @map("scoreboard_type")
@@ -1374,6 +1381,7 @@ model Registration {
   userId      String   @map("user_id") @db.Uuid
   hackathonId String   @map("hackathon_id") @db.Uuid
   status      RegistrationStatus @default(REGISTERED)
+  waitlistPosition Int? @map("waitlist_position")
   checkedInAt DateTime? @map("checked_in_at")
   createdAt   DateTime @default(now()) @map("created_at")
 

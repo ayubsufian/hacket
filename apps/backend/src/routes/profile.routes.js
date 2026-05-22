@@ -16,8 +16,8 @@ const router = Router();
 // ── Validation Schemas ──────────────────────────────────────────────────
 
 const updateProfileSchema = Joi.object({
-  firstName: Joi.string().min(1).max(100),
-  lastName: Joi.string().min(1).max(100),
+  firstName: Joi.string().trim().min(1).max(100).invalid('New'),
+  lastName: Joi.string().trim().min(1).max(100).invalid('User'),
   bio: Joi.string().max(1000).allow(null, ''),
   avatarUrl: Joi.string().uri().allow(null, ''),
   phone: Joi.string().max(50).allow(null, ''),

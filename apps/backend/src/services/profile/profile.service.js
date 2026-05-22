@@ -148,9 +148,23 @@ class ProfileService {
       throw new AppError('Profile not found.', 404);
     }
 
+    const normalizedData = { ...updateData };
+    if (Object.prototype.hasOwnProperty.call(normalizedData, 'firstName')) {
+      normalizedData.firstName = normalizedData.firstName?.trim();
+      if (!normalizedData.firstName || normalizedData.firstName === 'New') {
+        throw new AppError('A valid first name is required.', 400);
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedData, 'lastName')) {
+      normalizedData.lastName = normalizedData.lastName?.trim();
+      if (!normalizedData.lastName || normalizedData.lastName === 'User') {
+        throw new AppError('A valid last name is required.', 400);
+      }
+    }
+
     const updatedProfile = await prisma.userProfile.update({
       where: { userId },
-      data: updateData,
+      data: normalizedData,
     });
 
     eventBus.emit('audit:log', {

@@ -416,10 +416,19 @@ class AuthService {
       entityId: user.id,
     });
 
+    const profileCompletion = this._buildProfileCompletionContext(user.profile);
+    const isProfileIncomplete = profileCompletion.isProfileIncomplete;
+
     return {
       user: this._sanitizeUser(user),
       token,
-      dashboardRedirect: this._getDashboardPath(user.role),
+      dashboardRedirect: isProfileIncomplete ? '/profile/me' : this._getDashboardPath(user.role),
+      isProfileIncomplete,
+      ...profileCompletion,
+      capabilities: this._buildAuthCapabilities(user, {
+        isProfileIncomplete,
+        hasOrganizerVerificationDocument: false,
+      }),
     };
   }
 
@@ -625,7 +634,8 @@ class AuthService {
       throw new AppError('User not found.', 404);
     }
 
-    const isProfileIncomplete = this._isProfileIncomplete(user.profile);
+    const profileCompletion = this._buildProfileCompletionContext(user.profile);
+    const isProfileIncomplete = profileCompletion.isProfileIncomplete;
     const organizations = user.organizationMemberships.map((membership) => ({
       id: membership.organization.id,
       name: membership.organization.name,
@@ -649,8 +659,9 @@ class AuthService {
 
     return {
       user: account,
-      dashboardRedirect: this._getDashboardPath(user.role),
+      dashboardRedirect: isProfileIncomplete ? '/profile/me' : this._getDashboardPath(user.role),
       isProfileIncomplete,
+      ...profileCompletion,
       capabilities: this._buildAuthCapabilities(user, {
         isProfileIncomplete,
         hasOrganizerVerificationDocument: organizations.some((org) => org.hasVerificationDocument),
@@ -852,15 +863,15 @@ class AuthService {
       console.error('[OAuth] Failed to create DB session:', err.message);
     }
 
-    // 2026 Standard: Flag incomplete profiles so the frontend can redirect to profile completion
-    const isProfileIncomplete = !user.profile?.firstName || user.profile?.firstName === 'New' 
-      || !user.profile?.lastName || user.profile?.lastName === 'User';
+    const profileCompletion = this._buildProfileCompletionContext(user.profile);
+    const isProfileIncomplete = profileCompletion.isProfileIncomplete;
 
     return {
       user: this._sanitizeUser(user),
       token,
-      dashboardRedirect: this._getDashboardPath(user.role),
+      dashboardRedirect: isProfileIncomplete ? '/profile/me' : this._getDashboardPath(user.role),
       isProfileIncomplete,
+      ...profileCompletion,
     };
   }
 
@@ -1072,8 +1083,9 @@ class AuthService {
       user: this._sanitizeUser(user),
       token,
       organization,
-      dashboardRedirect: this._getDashboardPath(user.role),
+      dashboardRedirect: isProfileIncomplete ? '/profile/me' : this._getDashboardPath(user.role),
       isProfileIncomplete,
+      ...this._buildProfileCompletionContext(user.profile),
       statusCode: createdOrganizerApplication ? 201 : 200,
       message: user.verificationStatus === 'VERIFIED'
         ? 'Google OAuth organizer login successful.'
@@ -1264,15 +1276,15 @@ class AuthService {
       console.error('[OAuth] Failed to create DB session:', err.message);
     }
 
-    // 2026 Standard: Flag incomplete profiles so the frontend can redirect to profile completion
-    const isProfileIncomplete = !user.profile?.firstName || user.profile?.firstName === 'New' 
-      || !user.profile?.lastName || user.profile?.lastName === 'User';
+    const profileCompletion = this._buildProfileCompletionContext(user.profile);
+    const isProfileIncomplete = profileCompletion.isProfileIncomplete;
 
     return {
       user: this._sanitizeUser(user),
       token,
-      dashboardRedirect: this._getDashboardPath(user.role),
+      dashboardRedirect: isProfileIncomplete ? '/profile/me' : this._getDashboardPath(user.role),
       isProfileIncomplete,
+      ...profileCompletion,
     };
   }
 
@@ -1493,8 +1505,9 @@ class AuthService {
       user: this._sanitizeUser(user),
       token,
       organization,
-      dashboardRedirect: this._getDashboardPath(user.role),
+      dashboardRedirect: isProfileIncomplete ? '/profile/me' : this._getDashboardPath(user.role),
       isProfileIncomplete,
+      ...this._buildProfileCompletionContext(user.profile),
       statusCode: createdOrganizerApplication ? 201 : 200,
       message: user.verificationStatus === 'VERIFIED'
         ? 'GitHub OAuth organizer login successful.'
@@ -1934,17 +1947,26 @@ class AuthService {
   }
 
   _isProfileIncomplete(profile) {
-    if (!profile) {
-      return true;
-    }
+    return this._buildProfileCompletionContext(profile).isProfileIncomplete;
+  }
 
-    const firstName = profile.firstName?.trim();
-    const lastName = profile.lastName?.trim();
+  _buildProfileCompletionContext(profile) {
+    const firstName = profile?.firstName?.trim();
+    const lastName = profile?.lastName?.trim();
+    const missingProfileFields = [
+      !firstName || firstName === 'New' ? 'firstName' : null,
+      !lastName || lastName === 'User' ? 'lastName' : null,
+    ].filter(Boolean);
+    const isProfileIncomplete = missingProfileFields.length > 0;
 
-    return !firstName
-      || !lastName
-      || firstName === 'New'
-      || lastName === 'User';
+    return {
+      isProfileIncomplete,
+      missingProfileFields,
+      profileCompletionUrl: isProfileIncomplete ? '/profile/me' : null,
+      profileCompletionMessage: isProfileIncomplete
+        ? `Please complete your ${missingProfileFields.join(' and ')} before accessing the platform.`
+        : null,
+    };
   }
 
   _buildAuthCapabilities(user, { isProfileIncomplete, hasOrganizerVerificationDocument }) {
@@ -1954,7 +1976,7 @@ class AuthService {
     const isVerified = user.verificationStatus === 'VERIFIED';
 
     return {
-      canAccessDashboard: isUsableAccount,
+      canAccessDashboard: isUsableAccount && !isProfileIncomplete,
       canJoinHackathons: isUsableAccount && isParticipant && isVerified && !isProfileIncomplete,
       canCreateHackathons: isUsableAccount && isOrganizer && isVerified && !isProfileIncomplete,
       canSubmitOrganizerVerification: isUsableAccount

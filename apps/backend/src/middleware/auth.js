@@ -12,6 +12,30 @@ const prisma = require('../config/database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 
+const PROFILE_COMPLETION_ALLOWED_ROUTES = [
+  { method: 'GET', path: /^\/api\/v1\/auth\/me(?:\?|$)/ },
+  { method: 'POST', path: /^\/api\/v1\/auth\/logout(?:\?|$)/ },
+  { method: 'POST', path: /^\/api\/v1\/auth\/extend-session(?:\?|$)/ },
+  { method: 'GET', path: /^\/api\/v1\/profile\/me(?:\?|$)/ },
+  { method: 'PATCH', path: /^\/api\/v1\/profile\/me(?:\?|$)/ },
+];
+
+function isProfileCompletionAllowedRoute(req) {
+  return PROFILE_COMPLETION_ALLOWED_ROUTES.some((route) => (
+    route.method === req.method && route.path.test(req.originalUrl)
+  ));
+}
+
+function isIncompleteProfile(profile) {
+  const firstName = profile?.firstName?.trim();
+  const lastName = profile?.lastName?.trim();
+
+  return !firstName
+    || !lastName
+    || firstName === 'New'
+    || lastName === 'User';
+}
+
 /**
  * Middleware: Verify JWT and attach user to request.
  */
@@ -95,7 +119,17 @@ const authenticate = async (req, res, next) => {
     // lightweight check periodically. For maximum security, always verify.
     const liveUser = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { isActive: true, role: true, verificationStatus: true },
+      select: {
+        isActive: true,
+        role: true,
+        verificationStatus: true,
+        profile: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
     });
 
     if (!liveUser) {
@@ -117,8 +151,34 @@ const authenticate = async (req, res, next) => {
       email: decoded.email,
       role: liveUser.role,
       verificationStatus: liveUser.verificationStatus,
+      isProfileIncomplete: isIncompleteProfile(liveUser.profile),
     };
     req.authToken = token;
+
+    if (
+      req.user.isProfileIncomplete
+      && req.user.role !== 'ADMIN'
+      && !isProfileCompletionAllowedRoute(req)
+    ) {
+      const missingFields = [
+        liveUser.profile?.firstName?.trim() && liveUser.profile.firstName !== 'New' ? null : 'firstName',
+        liveUser.profile?.lastName?.trim() && liveUser.profile.lastName !== 'User' ? null : 'lastName',
+      ].filter(Boolean);
+
+      return next(
+        Object.assign(
+          new AppError('Please complete your first and last name before accessing the platform.', 403),
+          {
+            code: 'PROFILE_NAME_REQUIRED',
+            data: {
+              code: 'PROFILE_NAME_REQUIRED',
+              requiredFields: missingFields,
+              profileCompletionUrl: '/profile/me',
+            },
+          },
+        ),
+      );
+    }
 
     next();
   } catch (err) {

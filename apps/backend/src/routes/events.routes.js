@@ -24,7 +24,9 @@ const router = Router();
 
 const createSchema = Joi.object({
   title: Joi.string().min(3).max(255).required(),
-  status: Joi.string().valid('DRAFT', 'UPCOMING', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'IN_PROGRESS', 'JUDGING', 'COMPLETED', 'CANCELLED', 'SUSPENDED', 'ARCHIVED').default('DRAFT'),
+  status: Joi.string().valid('DRAFT').default('DRAFT').messages({
+    'any.only': 'New hackathons must start as DRAFT. Use explicit transition endpoints to publish or change state.',
+  }),
   overrideConflict: Joi.boolean().default(false),
   titleAm: Joi.string().max(255).allow(null, ''),
   description: Joi.string().allow(null, ''),
@@ -33,6 +35,8 @@ const createSchema = Joi.object({
   maxTeamSize: Joi.number().integer().min(1).max(20).default(5),
   minTeamSize: Joi.number().integer().min(1).max(20).default(1),
   maxParticipants: Joi.number().integer().min(1).allow(null),
+  waitlistEnabled: Joi.boolean().default(true),
+  waitlistLimit: Joi.number().integer().min(1).allow(null),
   registrationStart: Joi.date().iso().allow(null),
   registrationEnd: Joi.date().iso().greater(Joi.ref('registrationStart')).allow(null),
   eventStart: Joi.date().iso().allow(null),
@@ -63,6 +67,8 @@ const updateSchema = createSchema.fork(
   judgingMode: Joi.string()
     .valid('ALL_JUDGES_ALL_SUBMISSIONS', 'ASSIGNED_JUDGES', 'MINIMUM_REVIEWS'),
   requiredReviewsPerSubmission: Joi.number().integer().min(1).max(50),
+  waitlistEnabled: Joi.boolean(),
+  waitlistLimit: Joi.number().integer().min(1).allow(null),
   status: Joi.forbidden().messages({
     'any.unknown': 'Status updates must be performed via explicit transition endpoints (e.g., /publish, /complete).'
   })
@@ -94,6 +100,49 @@ const kickSchema = Joi.object({
   reason: Joi.string().max(500).required()
 });
 
+const registrationSchema = Joi.object({
+  inviteToken: Joi.string().max(500).allow(null, ''),
+});
+
+const validateEventShape = (value, helpers) => {
+  if (value.minTeamSize && value.maxTeamSize && value.minTeamSize > value.maxTeamSize) {
+    return helpers.error('any.custom', { message: 'minTeamSize cannot be greater than maxTeamSize.' });
+  }
+
+  const datePairs = [
+    ['registrationStart', 'registrationEnd', 'registrationEnd must be after registrationStart.'],
+    ['eventStart', 'eventEnd', 'eventEnd must be after eventStart.'],
+    ['judgingStart', 'judgingEnd', 'judgingEnd must be after judgingStart.'],
+  ];
+
+  for (const [startField, endField, message] of datePairs) {
+    if (value[startField] && value[endField] && new Date(value[endField]) <= new Date(value[startField])) {
+      return helpers.error('any.custom', { message });
+    }
+  }
+
+  if (value.registrationEnd && value.eventStart && new Date(value.eventStart) < new Date(value.registrationEnd)) {
+    return helpers.error('any.custom', { message: 'eventStart must be after registrationEnd.' });
+  }
+
+  if (value.eventStart && value.submissionDeadline && new Date(value.submissionDeadline) <= new Date(value.eventStart)) {
+    return helpers.error('any.custom', { message: 'submissionDeadline must be after eventStart.' });
+  }
+
+  if (value.submissionDeadline && value.judgingStart && new Date(value.judgingStart) < new Date(value.submissionDeadline)) {
+    return helpers.error('any.custom', { message: 'judgingStart must be after submissionDeadline.' });
+  }
+
+  if (value.submissionDeadline && value.judgingEnd && new Date(value.judgingEnd) <= new Date(value.submissionDeadline)) {
+    return helpers.error('any.custom', { message: 'judgingEnd must be after submissionDeadline.' });
+  }
+
+  return value;
+};
+
+const eventCreateSchema = createSchema.custom(validateEventShape);
+const eventUpdateSchema = updateSchema.custom(validateEventShape);
+
 // ── Routes ──────────────────────────────────────────────────────────────
 
 // Public discovery
@@ -105,6 +154,8 @@ router.get('/:id/calendar', eventsController.getCalendar);
 router.get(
   '/:id/participants',
   authenticate,
+  ensureVerified,
+  ensureProfileComplete,
   authorizeEventStaff('CO_ORGANIZER', 'SPONSOR', 'TECHNICAL_LEAD', 'LOGISTICS'),
   eventsController.getParticipants
 );
@@ -116,7 +167,7 @@ router.post(
   ensureVerified,
   ensureProfileComplete,
   authorize('ORGANIZER', 'ADMIN'),
-  validate(createSchema),
+  validate(eventCreateSchema),
   eventsController.create
 );
 
@@ -126,7 +177,7 @@ router.put(
   ensureVerified,
   ensureProfileComplete,
   authorizeEventStaff('CO_ORGANIZER', 'TECHNICAL_LEAD', 'COMMUNICATIONS', 'LOGISTICS', 'FINANCE'),
-  validate(updateSchema),
+  validate(eventUpdateSchema),
   eventsController.update
 );
 
@@ -155,6 +206,7 @@ router.post(
   ensureVerified,
   ensureProfileComplete,
   authorize('PARTICIPANT', 'ORGANIZER'),
+  validate(registrationSchema),
   eventsController.registerParticipant
 );
 
@@ -201,7 +253,7 @@ router.post(
   authenticate,
   ensureVerified,
   ensureProfileComplete,
-  authorize('ORGANIZER', 'ADMIN'),
+  authorizeEventStaff('ADMIN', 'CO_ORGANIZER'),
   eventsController.archive
 );
 
@@ -267,6 +319,8 @@ router.post(
 router.get(
   '/:id/context',
   authenticate,
+  ensureVerified,
+  ensureProfileComplete,
   eventsController.getContext
 );
 
@@ -274,6 +328,8 @@ router.get(
 router.get(
   '/:id/stats',
   authenticate,
+  ensureVerified,
+  ensureProfileComplete,
   authorizeEventStaff('CO_ORGANIZER', 'TECHNICAL_LEAD', 'LOGISTICS'),
   eventsController.getStats
 );

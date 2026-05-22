@@ -15,6 +15,10 @@ exports.getCalendar = catchAsync(async (req, res) => {
     throw new AppError('Hackathon not found.', 404);
   }
 
+  if (!hackathon.eventStart || !hackathon.eventEnd) {
+    throw new AppError('Calendar export is only available after the event schedule is configured.', 409);
+  }
+
   const icsContent = generateIcs(hackathon);
 
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
@@ -115,15 +119,18 @@ exports.remove = catchAsync(async (req, res) => {
 });
 
 exports.registerParticipant = catchAsync(async (req, res) => {
-  const team = await eventsService.registerParticipant(
+  const result = await eventsService.registerParticipant(
     req.params.id,
-    req.user.id
+    req.user.id,
+    req.body
   );
 
   res.status(201).json({
     success: true,
-    message: 'Successfully registered for hackathon.',
-    data: { team },
+    message: result.status === 'WAITLISTED'
+      ? 'Hackathon is full. You have been added to the waitlist.'
+      : 'Successfully registered for hackathon.',
+    data: result,
   });
 });
 

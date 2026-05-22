@@ -21,8 +21,7 @@ class EventsService {
   async create(organizerId, data) {
     const { tags, overrideConflict, ...hackathonData } = data;
 
-    // AF1 & AF2: Validate publishing fields if status is PUBLISHED
-    this._validatePublishingFields(hackathonData);
+    this._validateEventConfiguration(hackathonData);
 
     // AF3: Check duplicate title
     const isConflictOverridden = await this._checkDuplicateTitle(hackathonData.title, overrideConflict);
@@ -105,8 +104,16 @@ class EventsService {
    * @returns {array}
    */
   async getParticipants(hackathonId) {
-    const members = await prisma.teamMember.findMany({
-      where: { team: { hackathonId } },
+    const registrations = await prisma.registration.findMany({
+      where: {
+        hackathonId,
+        status: { in: ['REGISTERED', 'CHECKED_IN', 'WAITLISTED'] },
+      },
+      orderBy: [
+        { status: 'asc' },
+        { waitlistPosition: 'asc' },
+        { createdAt: 'asc' },
+      ],
       include: {
         user: {
           select: {
@@ -119,23 +126,47 @@ class EventsService {
                 skills: true,
                 githubUrl: true,
                 linkedinUrl: true,
-                portfolioUrl: true,
-                resumeUrl: true
+                avatarUrl: true,
+                university: true,
+                city: true,
+                region: true,
+                isSeekingTeam: true,
               }
             }
           }
         },
-        team: {
-          select: { id: true, name: true }
-        }
       }
     });
 
-    return members.map(m => ({
-      ...m.user,
-      team: m.team,
-      role: m.role
-    }));
+    const memberships = await prisma.teamMember.findMany({
+      where: {
+        userId: { in: registrations.map((registration) => registration.userId) },
+        team: { hackathonId },
+      },
+      include: {
+        team: { select: { id: true, name: true } },
+      },
+    });
+
+    const membershipByUserId = new Map(
+      memberships.map((membership) => [membership.userId, membership]),
+    );
+
+    return registrations.map((registration) => {
+      const membership = membershipByUserId.get(registration.userId);
+      return {
+        ...registration.user,
+        registration: {
+          id: registration.id,
+          status: registration.status,
+          waitlistPosition: registration.waitlistPosition,
+          checkedInAt: registration.checkedInAt,
+          registeredAt: registration.createdAt,
+        },
+        team: membership?.team || null,
+        role: membership?.role || null,
+      };
+    });
   }
 
   /**
@@ -331,9 +362,9 @@ class EventsService {
 
     const { tags, overrideConflict, ...updateData } = filteredData;
 
-    // Merge existing hackathon with incoming updates to validate publishing state
+    // Merge existing hackathon with incoming updates to validate lifecycle and schedule integrity
     const mergedData = { ...hackathon, ...updateData };
-    this._validatePublishingFields(mergedData);
+    this._validateEventConfiguration(mergedData);
 
     // Check duplicate title (excluding current hackathon)
     if (updateData.title) {
@@ -370,13 +401,10 @@ class EventsService {
       };
     }
 
-    const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
-
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
       data: {
         ...updateData,
-        ...judgingStartData,
         tags: tagsPayload,
       },
       include: { tags: true },
@@ -463,7 +491,7 @@ class EventsService {
       // 1. Soft delete registration
       const updatedReg = await tx.registration.update({
         where: { id: registration.id },
-        data: { status: 'WITHDRAWN' }
+        data: { status: 'WITHDRAWN', waitlistPosition: null }
       });
 
       // 2. Handle team membership
@@ -490,7 +518,24 @@ class EventsService {
         }
       }
 
-      return updatedReg;
+      if (registration.status === 'WAITLISTED' && registration.waitlistPosition) {
+        await tx.registration.updateMany({
+          where: {
+            hackathonId,
+            status: 'WAITLISTED',
+            waitlistPosition: { gt: registration.waitlistPosition },
+          },
+          data: {
+            waitlistPosition: { decrement: 1 },
+          },
+        });
+      }
+
+      const promotedRegistration = registration.status === 'WAITLISTED'
+        ? null
+        : await this._promoteNextWaitlistedParticipant(tx, hackathonId);
+
+      return { registration: updatedReg, promotedRegistration };
     });
 
     eventBus.emit('audit:log', {
@@ -520,7 +565,7 @@ class EventsService {
    * @param {string} userId
    * @returns {object} Created team membership
    */
-  async registerParticipant(hackathonId, userId) {
+  async registerParticipant(hackathonId, userId, { inviteToken = null } = {}) {
     const hackathon = await prisma.hackathon.findUnique({
       where: { id: hackathonId },
     });
@@ -529,21 +574,23 @@ class EventsService {
 
     const now = new Date();
     if (hackathon.status !== 'REGISTRATION_OPEN') {
-      throw new AppError('Registration is not currently open.', 400);
+      throw new AppError('Registration is not currently open.', 409);
+    }
+    if (!hackathon.registrationStart || !hackathon.registrationEnd) {
+      throw new AppError('Registration window is not configured for this hackathon.', 409);
     }
     if (now < hackathon.registrationStart || now > hackathon.registrationEnd) {
-      throw new AppError('Registration window is closed.', 400);
+      throw new AppError('Registration window is closed.', 409);
     }
 
     // Check if already registered
-    const existing = await prisma.teamMember.findFirst({
+    const existingRegistration = await prisma.registration.findUnique({
       where: {
-        userId,
-        team: { hackathonId },
+        userId_hackathonId: { userId, hackathonId },
       },
     });
 
-    if (existing) {
+    if (existingRegistration && existingRegistration.status !== 'WITHDRAWN') {
       throw new AppError('You are already registered for this hackathon.', 409);
     }
 
@@ -565,20 +612,10 @@ class EventsService {
       throw new AppError(`You cannot register as a participant because you are assigned as a ${staffAssignment.staffRole} for this hackathon.`, 403);
     }
 
-    // Check max participants
-    if (hackathon.maxParticipants) {
-      const count = await prisma.teamMember.count({
-        where: { team: { hackathonId } },
-      });
-      if (count >= hackathon.maxParticipants) {
-        throw new AppError('This hackathon has reached maximum capacity.', 400);
-      }
-    }
-
     // Get user profile for naming & prerequisite validation
     const profile = await prisma.userProfile.findUnique({
       where: { userId },
-      select: { firstName: true, lastName: true, dateOfBirth: true, skills: true },
+      select: { firstName: true, lastName: true, dateOfBirth: true, skills: true, interests: true },
     });
 
     // AF3: Pre-requisite validation
@@ -603,30 +640,143 @@ class EventsService {
           throw new AppError('You do not meet the required criteria to register for this event.', 403);
         }
       }
+
+      if (prereqs.requiredTags && prereqs.requiredTags.length > 0) {
+        const participantTags = new Set([...(profile.skills || []), ...(profile.interests || [])]);
+        const hasTag = prereqs.requiredTags.some(tag => participantTags.has(tag));
+        if (!hasTag) {
+          throw new AppError('You do not meet the required criteria to register for this event.', 403);
+        }
+      }
+
+      const requiredInviteToken = prereqs.inviteToken || prereqs.requiredInviteToken;
+      if (requiredInviteToken && inviteToken !== requiredInviteToken) {
+        throw new AppError('A valid invitation token is required to register for this event.', 403);
+      }
     }
 
-    const teamName = profile
-      ? `${profile.firstName}'s Team`
-      : `Team-${userId.substring(0, 8)}`;
+    const teamName = this._buildSoloTeamName(profile, userId);
 
     // Create Registration and solo team atomically
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Create the official Registration record
-      await tx.registration.create({
-        data: {
-          userId,
-          hackathonId,
-          status: 'REGISTERED'
-        }
+      await tx.$queryRaw`SELECT id FROM "hackathons" WHERE id = ${hackathonId}::uuid FOR UPDATE`;
+
+      const lockedHackathon = await tx.hackathon.findUnique({
+        where: { id: hackathonId },
+        select: {
+          status: true,
+          registrationStart: true,
+          registrationEnd: true,
+          maxParticipants: true,
+          waitlistEnabled: true,
+          waitlistLimit: true,
+        },
       });
 
+      if (!lockedHackathon) {
+        throw new AppError('Hackathon not found.', 404);
+      }
+
+      const lockedNow = new Date();
+      if (lockedHackathon.status !== 'REGISTRATION_OPEN') {
+        throw new AppError('Registration is not currently open.', 409);
+      }
+      if (!lockedHackathon.registrationStart || !lockedHackathon.registrationEnd) {
+        throw new AppError('Registration window is not configured for this hackathon.', 409);
+      }
+      if (lockedNow < lockedHackathon.registrationStart || lockedNow > lockedHackathon.registrationEnd) {
+        throw new AppError('Registration window is closed.', 409);
+      }
+
+      const currentRegistration = await tx.registration.findUnique({
+        where: {
+          userId_hackathonId: { userId, hackathonId },
+        },
+      });
+
+      if (currentRegistration && currentRegistration.status !== 'WITHDRAWN') {
+        throw new AppError('You are already registered for this hackathon.', 409);
+      }
+
+      const [registeredCount, waitlistedCount, lastWaitlistPosition] = await Promise.all([
+        tx.registration.count({
+          where: {
+            hackathonId,
+            status: { in: ['REGISTERED', 'CHECKED_IN'] },
+          },
+        }),
+        tx.registration.count({
+          where: {
+            hackathonId,
+            status: 'WAITLISTED',
+          },
+        }),
+        tx.registration.aggregate({
+          where: {
+            hackathonId,
+            status: 'WAITLISTED',
+          },
+          _max: { waitlistPosition: true },
+        }),
+      ]);
+
+      const hasCapacity = !lockedHackathon.maxParticipants || registeredCount < lockedHackathon.maxParticipants;
+      const nextStatus = hasCapacity ? 'REGISTERED' : 'WAITLISTED';
+
+      if (!hasCapacity) {
+        if (!lockedHackathon.waitlistEnabled) {
+          throw new AppError('This hackathon has reached maximum capacity.', 409);
+        }
+
+        if (lockedHackathon.waitlistLimit && waitlistedCount >= lockedHackathon.waitlistLimit) {
+          throw new AppError('This hackathon and its waitlist are full.', 409);
+        }
+      }
+
+      const waitlistPosition = nextStatus === 'WAITLISTED'
+        ? (lastWaitlistPosition._max.waitlistPosition || 0) + 1
+        : null;
+
+      const registration = currentRegistration
+        ? await tx.registration.update({
+          where: { id: currentRegistration.id },
+          data: {
+            status: nextStatus,
+            waitlistPosition,
+            checkedInAt: null,
+          },
+        })
+        : await tx.registration.create({
+          data: {
+            userId,
+            hackathonId,
+            status: nextStatus,
+            waitlistPosition,
+          },
+        });
+
+      if (nextStatus === 'WAITLISTED') {
+        return { registration, team: null, status: nextStatus, waitlistPosition };
+      }
+
+      const existingTeam = await tx.teamMember.findFirst({
+        where: {
+          userId,
+          team: { hackathonId },
+        },
+      });
+
+      if (existingTeam && !currentRegistration) {
+        throw new AppError('You are already a member of a team for this hackathon.', 409);
+      }
+
       // 2. Create solo team + membership
-      return await tx.team.create({
+      const team = existingTeam ? null : await tx.team.create({
         data: {
           hackathonId,
           name: teamName,
           members: {
-            create: { userId, role: 'leader' },
+            create: { userId, role: 'LEADER' },
           },
         },
         include: {
@@ -637,6 +787,8 @@ class EventsService {
           },
         },
       });
+
+      return { registration, team, status: nextStatus, waitlistPosition: null };
     });
 
     return result;
@@ -683,6 +835,8 @@ class EventsService {
         maxTeamSize: original.maxTeamSize,
         minTeamSize: original.minTeamSize,
         maxParticipants: original.maxParticipants,
+        waitlistEnabled: original.waitlistEnabled,
+        waitlistLimit: original.waitlistLimit,
         
         // Setup placeholder dates
         registrationStart: oneMonthFromNow,
@@ -747,8 +901,53 @@ class EventsService {
 
     if (!hackathon) throw new AppError('Hackathon not found.', 404);
 
+    if (!hackathon.eventStart) {
+      throw new AppError('Event start date is not configured for this hackathon.', 409);
+    }
+
     if (new Date() >= hackathon.eventStart || hackathon.status !== 'REGISTRATION_OPEN') {
       throw new AppError('Cannot unregister after the event has started or registration is closed.', 400);
+    }
+
+    const registration = await prisma.registration.findUnique({
+      where: {
+        userId_hackathonId: { userId, hackathonId },
+      },
+    });
+
+    if (!registration || registration.status === 'WITHDRAWN') {
+      throw new AppError('You are not registered for this hackathon.', 400);
+    }
+
+    if (registration.status === 'WAITLISTED') {
+      await prisma.$transaction(async (tx) => {
+        await tx.registration.update({
+          where: { id: registration.id },
+          data: { status: 'WITHDRAWN', waitlistPosition: null },
+        });
+
+        if (registration.waitlistPosition) {
+          await tx.registration.updateMany({
+            where: {
+              hackathonId,
+              status: 'WAITLISTED',
+              waitlistPosition: { gt: registration.waitlistPosition },
+            },
+            data: {
+              waitlistPosition: { decrement: 1 },
+            },
+          });
+        }
+      });
+
+      eventBus.emit('audit:log', {
+        actorId: userId,
+        action: 'DELETE',
+        entity: 'registration',
+        entityId: registration.id,
+        details: { hackathonId, previousStatus: 'WAITLISTED' }
+      });
+      return;
     }
 
     const membership = await prisma.teamMember.findFirst({
@@ -766,7 +965,7 @@ class EventsService {
     });
 
     if (!membership) {
-      throw new AppError('You are not registered for this hackathon.', 400);
+      throw new AppError('Registration record is missing its team membership. Please contact support.', 409);
     }
 
     const team = membership.team;
@@ -789,8 +988,10 @@ class EventsService {
       // Instead of deleting, soft-delete the registration to preserve drop-out analytics
       await tx.registration.updateMany({
         where: { userId, hackathonId },
-        data: { status: 'WITHDRAWN' }
+        data: { status: 'WITHDRAWN', waitlistPosition: null }
       });
+
+      await this._promoteNextWaitlistedParticipant(tx, hackathonId);
     });
 
     eventBus.emit('audit:log', {
@@ -817,6 +1018,10 @@ class EventsService {
 
     if (registration.status === 'WITHDRAWN') {
       throw new AppError('Participant has withdrawn their registration and cannot be checked in.', 400);
+    }
+
+    if (registration.status === 'WAITLISTED') {
+      throw new AppError('Waitlisted participants cannot be checked in until they are registered.', 409);
     }
     
     if (registration.status === 'CHECKED_IN') {
@@ -913,7 +1118,7 @@ class EventsService {
     }
 
     const updatedData = { ...hackathon, status: newStatus };
-    this._validatePublishingFields(updatedData);
+    this._validateEventConfiguration(updatedData);
 
     const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
 
@@ -949,7 +1154,7 @@ class EventsService {
 
       // 2. Cascade withdrawal to all registrations so participant dashboards reflect the voided status
       await tx.registration.updateMany({
-        where: { hackathonId, status: 'REGISTERED' },
+        where: { hackathonId, status: { in: ['REGISTERED', 'CHECKED_IN', 'WAITLISTED'] } },
         data: { status: 'WITHDRAWN' }
       });
 
@@ -974,6 +1179,10 @@ class EventsService {
     const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId } });
     if (!hackathon) throw new AppError('Hackathon not found.', 404);
 
+    if (['DRAFT', 'COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(hackathon.status)) {
+      throw new AppError(`Hackathons in the ${hackathon.status} state cannot be suspended.`, 409);
+    }
+
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
       data: { status: 'SUSPENDED' }
@@ -992,6 +1201,7 @@ class EventsService {
     }
 
     const newStatus = this._calculateCurrentPhase(hackathon);
+    this._validateEventConfiguration({ ...hackathon, status: newStatus });
 
     const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
 
@@ -1026,6 +1236,8 @@ class EventsService {
     if (!inactiveStates.includes(hackathon.status)) {
       newStatus = this._calculateCurrentPhase(mergedData);
     }
+
+    this._validateEventConfiguration({ ...mergedData, status: newStatus });
 
     const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
 
@@ -1100,6 +1312,7 @@ class EventsService {
     // Format the group by results
     const counts = {
       REGISTERED: 0,
+      WAITLISTED: 0,
       CHECKED_IN: 0,
       WITHDRAWN: 0
     };
@@ -1113,7 +1326,7 @@ class EventsService {
       capacity: {
         max: hackathon.maxParticipants,
         current: counts.REGISTERED + counts.CHECKED_IN,
-        waitlisted: 0 // Placeholder for future waitlist feature
+        waitlisted: counts.WAITLISTED
       },
       registrations: counts,
       teams: teamCount,
@@ -1483,8 +1696,120 @@ class EventsService {
     };
   }
 
+  _buildSoloTeamName(profile, userId) {
+    const displayName = profile
+      ? [profile.firstName, profile.lastName].filter(Boolean).join(' ')
+      : 'Participant';
+
+    return `${displayName || 'Participant'}'s Team ${userId.substring(0, 8)}`;
+  }
+
+  async _promoteNextWaitlistedParticipant(tx, hackathonId) {
+    const nextRegistration = await tx.registration.findFirst({
+      where: {
+        hackathonId,
+        status: 'WAITLISTED',
+      },
+      orderBy: [
+        { waitlistPosition: 'asc' },
+        { createdAt: 'asc' },
+      ],
+      include: {
+        user: {
+          select: {
+            profile: {
+              select: { firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!nextRegistration) return null;
+
+    const promotedRegistration = await tx.registration.update({
+      where: { id: nextRegistration.id },
+      data: {
+        status: 'REGISTERED',
+        waitlistPosition: null,
+        checkedInAt: null,
+      },
+    });
+
+    const existingTeam = await tx.teamMember.findFirst({
+      where: {
+        userId: nextRegistration.userId,
+        team: { hackathonId },
+      },
+    });
+
+    if (!existingTeam) {
+      await tx.team.create({
+        data: {
+          hackathonId,
+          name: this._buildSoloTeamName(nextRegistration.user.profile, nextRegistration.userId),
+          members: {
+            create: { userId: nextRegistration.userId, role: 'LEADER' },
+          },
+        },
+      });
+    }
+
+    if (nextRegistration.waitlistPosition) {
+      await tx.registration.updateMany({
+        where: {
+          hackathonId,
+          status: 'WAITLISTED',
+          waitlistPosition: { gt: nextRegistration.waitlistPosition },
+        },
+        data: {
+          waitlistPosition: { decrement: 1 },
+        },
+      });
+    }
+
+    return promotedRegistration;
+  }
+
+  _validateEventConfiguration(data) {
+    if (data.minTeamSize && data.maxTeamSize && data.minTeamSize > data.maxTeamSize) {
+      throw new AppError('Minimum team size cannot be greater than maximum team size.', 400);
+    }
+
+    const assertAfter = (laterField, earlierField, allowEqual = false) => {
+      if (!data[laterField] || !data[earlierField]) return;
+
+      const later = new Date(data[laterField]);
+      const earlier = new Date(data[earlierField]);
+      const isInvalid = allowEqual ? later < earlier : later <= earlier;
+
+      if (isInvalid) {
+        throw new AppError(`${laterField} must be after ${earlierField}.`, 400);
+      }
+    };
+
+    assertAfter('registrationEnd', 'registrationStart');
+    assertAfter('eventStart', 'registrationEnd');
+    assertAfter('eventEnd', 'eventStart');
+    assertAfter('submissionDeadline', 'eventStart');
+    assertAfter('judgingStart', 'submissionDeadline', true);
+    assertAfter('judgingEnd', 'judgingStart');
+    assertAfter('judgingEnd', 'submissionDeadline');
+
+    this._validatePublishingFields(data);
+  }
+
   _validatePublishingFields(data) {
-    if (data.status !== 'REGISTRATION_OPEN') return;
+    const configuredStatuses = [
+      'UPCOMING',
+      'REGISTRATION_OPEN',
+      'REGISTRATION_CLOSED',
+      'IN_PROGRESS',
+      'JUDGING',
+      'COMPLETED',
+    ];
+
+    if (!configuredStatuses.includes(data.status)) return;
 
     const required = [
       'description',
@@ -1494,11 +1819,16 @@ class EventsService {
       'eventEnd',
       'submissionDeadline',
     ];
-    
-    const missing = required.filter((field) => !data[field]);
+
+    const missing = required.filter((field) => (
+      data[field] === null
+      || data[field] === undefined
+      || (typeof data[field] === 'string' && data[field].trim() === '')
+    ));
+
     if (missing.length > 0) {
       throw new AppError(
-        `Missing mandatory fields for publishing: ${missing.join(', ')}`,
+        `Missing mandatory fields before publishing: ${missing.join(', ')}`,
         400
       );
     }
