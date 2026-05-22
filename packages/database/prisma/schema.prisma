@@ -350,6 +350,8 @@ model Hackathon {
   organizationId        String?         @map("organization_id") @db.Uuid
   maxTeamSize           Int             @default(5) @map("max_team_size")
   minTeamSize           Int             @default(1) @map("min_team_size")
+  defaultMinLeads       Int             @default(1) @map("default_min_leads")
+  defaultMaxLeads       Int             @default(1) @map("default_max_leads")
   maxParticipants       Int?            @map("max_participants")
   waitlistEnabled       Boolean         @default(true) @map("waitlist_enabled")
   waitlistLimit         Int?            @map("waitlist_limit")
@@ -399,6 +401,7 @@ model Hackathon {
   analyticsSnapshots      EventAnalyticsSnapshot[]
   reportJobs              ReportJob[]
   staffAssignments        StaffAssignment[]
+  staffRoleConfigs        StaffRoleConfig[]
   staffInvitations        StaffInvitation[]
   organization            Organization?            @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   discussions             Discussion[]
@@ -1048,6 +1051,20 @@ model AuditLog {
 // =============================================================================
 // STAFF & PERMISSIONS
 // =============================================================================
+
+model StaffRoleConfig {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hackathonId String    @map("hackathon_id") @db.Uuid
+  staffRole   StaffRole @map("staff_role")
+  minLeads    Int?      @map("min_leads")
+  maxLeads    Int?      @map("max_leads")
+
+  // Relations
+  hackathon   Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  
+  @@unique([hackathonId, staffRole])
+  @@map("staff_role_configs")
+}
 
 model StaffAssignment {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

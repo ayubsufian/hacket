@@ -54,12 +54,29 @@ const authorizeEventStaff = (...allowedRoles) => {
         }
       });
 
-      if (!staffAssignment) {
-        return next(new AppError(`Forbidden. You must be one of the following to perform this action: ${allowedRoles.join(', ')}`, 403));
+      // 4. Delegated Lead Verification (2026 Standards)
+      // Allow if the user is a Lead for the target role being operated on (passed in req.body.staffRole or req.targetStaffRole)
+      let isDelegatedLead = false;
+      const targetRole = req.body.staffRole || req.targetStaffRole;
+      if (targetRole && !staffAssignment) {
+         const leadAssignment = await prisma.staffAssignment.findFirst({
+            where: {
+               userId: req.user.id,
+               hackathonId: eventId,
+               isActive: true,
+               isLead: true,
+               staffRole: targetRole
+            }
+         });
+         if (leadAssignment) isDelegatedLead = true;
+      }
+
+      if (!staffAssignment && !isDelegatedLead) {
+        return next(new AppError(`Forbidden. You must be one of the following to perform this action: ${allowedRoles.join(', ')} or the Lead for the target role.`, 403));
       }
 
       // Bind the validated role to the request for downstream controllers
-      req.eventStaffRole = staffAssignment.staffRole;
+      req.eventStaffRole = staffAssignment ? staffAssignment.staffRole : targetRole;
       next();
     } catch (error) {
       next(error);
