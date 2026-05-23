@@ -45,17 +45,19 @@ export async function logout() {
   authTokenStore.clear()
 }
 
-export async function requestPasswordReset(input: { email: string }) {
-  return apiRequest<null>('/auth/forgot-password', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  })
-}
+// TODO: Implement forgot-password functionality when backend endpoint is available
+// export async function requestPasswordReset(input: { email: string }) {
+//   return apiRequest<null>('/auth/forgot-password', {
+//     method: 'POST',
+//     body: JSON.stringify(input),
+//   })
+// }
 
-export async function acceptStaffInvitation(eventId: string, token: string) {
-  return apiRequest<{ message: string }>(`/events/${eventId}/staff/invitations/accept`, {
-    method: 'POST',
-    auth: true,
-    body: JSON.stringify({ token }),
-  })
-}
+// TODO: Implement staff invitation functionality when backend endpoint is available
+// export async function acceptStaffInvitation(eventId: string, token: string) {
+//   return apiRequest<{ message: string }>(`/events/${eventId}/staff/invitations/accept`, {
+//     method: 'POST',
+//     auth: true,
+//     body: JSON.stringify({ token }),
+//   })
+// }
