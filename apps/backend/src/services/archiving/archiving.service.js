@@ -48,6 +48,8 @@ class ArchivingService {
       throw new AppError('Only Draft, Completed, or Cancelled hackathons can be archived.', 400);
     }
 
+    await this._assertTeamsWithinSizeBounds(hackathonId);
+
     // Ensure directory exists
     await fs.mkdir(this.archiveDir, { recursive: true });
 
@@ -74,6 +76,28 @@ class ArchivingService {
     });
 
     return filePath;
+  }
+
+  async _assertTeamsWithinSizeBounds(hackathonId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { minTeamSize: true, maxTeamSize: true },
+    });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    const teams = await prisma.team.findMany({
+      where: { hackathonId },
+      include: { _count: { select: { members: true } } },
+    });
+
+    const invalidTeams = teams.filter((team) => (
+      team._count.members < hackathon.minTeamSize ||
+      team._count.members > hackathon.maxTeamSize
+    ));
+
+    if (invalidTeams.length > 0) {
+      throw new AppError('Hackathon cannot be archived while teams violate size limits.', 409);
+    }
   }
 
   /**

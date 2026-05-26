@@ -496,6 +496,11 @@ exports.acceptInvitationGlobal = catchAsync(async (req, res) => {
     details: { eventId: invitation.hackathonId, staffRole: invitation.staffRole }
   });
 
+  if (invitation.staffRole === 'JUDGE') {
+    const scoringService = require('../services/judging/scoring.service');
+    await scoringService.recalculateEffectiveReviews(invitation.hackathonId);
+  }
+
   res.status(200).json({
     success: true,
     message: `You have successfully joined the hackathon as a ${invitation.staffRole}.`,
@@ -579,6 +584,15 @@ exports.updateStaff = catchAsync(async (req, res) => {
       hackathon: { select: { title: true } }
     }
   });
+
+  if (
+    assignment.staffRole === 'JUDGE' ||
+    staffRole === 'JUDGE' ||
+    (typeof isActive === 'boolean' && assignment.staffRole === 'JUDGE')
+  ) {
+    const scoringService = require('../services/judging/scoring.service');
+    await scoringService.recalculateEffectiveReviews(assignment.hackathonId);
+  }
 
   eventBus.emit('audit:log', {
     actorId: req.user.id,

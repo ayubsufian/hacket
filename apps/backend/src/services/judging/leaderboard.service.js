@@ -24,12 +24,17 @@ class LeaderboardService {
     // AF1: Check visibility restrictions
     const hackathon = await prisma.hackathon.findUnique({
       where: { id: hackathonId },
-      select: { scoreboardReleaseAt: true },
+      select: { scoreboardReleaseAt: true, status: true },
     });
 
     if (!hackathon) {
       const AppError = require('../../utils/AppError');
       throw new AppError('Hackathon not found.', 404);
+    }
+
+    if (!['COMPLETED', 'ARCHIVED'].includes(hackathon.status)) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Leaderboard is only visible after results are final.', 403);
     }
 
     if (hackathon.scoreboardReleaseAt && new Date() < hackathon.scoreboardReleaseAt) {

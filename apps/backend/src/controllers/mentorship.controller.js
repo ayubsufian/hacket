@@ -2,27 +2,49 @@ const mentorshipService = require('../services/mentorship/mentorship.service');
 const catchAsync = require('../utils/catchAsync');
 
 exports.requestMentor = catchAsync(async (req, res) => {
-  const { mentorId, teamId, message } = req.body;
-  
+  const { mentorId, teamId, message, preferredAt } = req.body;
+
   const request = await mentorshipService.requestMentor(
     req.user.id,
     mentorId,
     teamId,
-    message
+    message,
+    preferredAt
   );
 
   res.status(201).json({
     success: true,
-    data: { request }
+    data: { request },
   });
 });
 
 exports.getIncomingRequests = catchAsync(async (req, res) => {
-  const requests = await mentorshipService.getIncomingRequests(req.user.id);
+  const result = await mentorshipService.getIncomingRequests(req.user.id, req.query);
 
   res.status(200).json({
     success: true,
-    data: { requests }
+    data: result.data,
+    pagination: result.pagination,
+  });
+});
+
+exports.getOutgoingRequests = catchAsync(async (req, res) => {
+  const result = await mentorshipService.getOutgoingRequests(req.user.id, req.query);
+
+  res.status(200).json({
+    success: true,
+    data: result.data,
+    pagination: result.pagination,
+  });
+});
+
+exports.cancelRequest = catchAsync(async (req, res) => {
+  const request = await mentorshipService.cancelRequest(req.user.id, req.params.requestId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Mentorship request cancelled.',
+    data: { request },
   });
 });
 
@@ -36,7 +58,7 @@ exports.respondToRequest = catchAsync(async (req, res) => {
   res.status(200).json({
     success: true,
     message: `Mentor request ${req.body.status.toLowerCase()} successfully.`,
-    data: { request: result }
+    data: { request: result },
   });
 });
 
@@ -45,7 +67,17 @@ exports.getAssignments = catchAsync(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data: { assignments }
+    data: { assignments },
+  });
+});
+
+exports.deactivateAssignment = catchAsync(async (req, res) => {
+  const assignment = await mentorshipService.deactivateAssignment(req.user, req.params.id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Mentor assignment deactivated.',
+    data: { assignment },
   });
 });
 
@@ -61,6 +93,36 @@ exports.logInteraction = catchAsync(async (req, res) => {
 
   res.status(201).json({
     success: true,
-    data: { interaction }
+    data: { interaction },
+  });
+});
+
+exports.getInteractions = catchAsync(async (req, res) => {
+  const result = await mentorshipService.getInteractions(req.user, req.query);
+
+  res.status(200).json({
+    success: true,
+    data: result.data,
+    pagination: result.pagination,
+  });
+});
+
+exports.findMentors = catchAsync(async (req, res) => {
+  const result = await mentorshipService.findMentors(req.params.hackathonId, req.query);
+
+  res.status(200).json({
+    success: true,
+    data: result.data,
+    pagination: result.pagination,
+  });
+});
+
+exports.createSession = catchAsync(async (req, res) => {
+  const result = await mentorshipService.createSession(req.user.id, req.body);
+
+  res.status(201).json({
+    success: true,
+    message: 'Mentorship session scheduled.',
+    data: result,
   });
 });

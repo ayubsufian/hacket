@@ -14,11 +14,126 @@
 const prisma = require('../../config/database');
 const { redisClient } = require('../../config/redis');
 const eventBus = require('../../utils/eventBus');
+const AppError = require('../../utils/AppError');
 
 // Redis key prefix for leaderboards
 const LEADERBOARD_KEY = (hackathonId) => `leaderboard:${hackathonId}`;
 
+const CRITERIA_LOCKED_STATUSES = new Set([
+  'IN_PROGRESS',
+  'JUDGING',
+  'COMPLETED',
+  'CANCELLED',
+  'SUSPENDED',
+  'ARCHIVED',
+]);
+
+const ASSIGNMENT_LOCKED_STATUSES = new Set([
+  'COMPLETED',
+  'CANCELLED',
+  'SUSPENDED',
+  'ARCHIVED',
+]);
+
 class ScoringNormalizationService {
+  async listCriteria(hackathonId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { id: true },
+    });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    return prisma.judgingCriteria.findMany({
+      where: { hackathonId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async getCriteria(criteriaId) {
+    const criteria = await prisma.judgingCriteria.findUnique({
+      where: { id: criteriaId },
+      include: { hackathon: { select: { id: true, title: true, status: true } } },
+    });
+
+    if (!criteria) throw new AppError('Criteria not found.', 404);
+    return criteria;
+  }
+
+  async addCriteria(hackathonId, data, actorId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { id: true, status: true },
+    });
+
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+    if (CRITERIA_LOCKED_STATUSES.has(hackathon.status)) {
+      throw new AppError('Judging criteria must be finalized before the hackathon starts.', 409);
+    }
+
+    const criteria = await prisma.judgingCriteria.create({
+      data: { hackathonId, ...data },
+    });
+
+    eventBus.emit('audit:log', {
+      actorId,
+      action: 'JUDGING_CRITERIA_CREATED',
+      entity: 'judgingCriteria',
+      entityId: criteria.id,
+      details: { hackathonId, name: criteria.name },
+    });
+
+    return criteria;
+  }
+
+  async updateCriteria(criteriaId, data, actorId) {
+    const criteria = await prisma.judgingCriteria.findUnique({
+      where: { id: criteriaId },
+      include: { hackathon: { select: { status: true } } },
+    });
+
+    if (!criteria) throw new AppError('Criteria not found.', 404);
+    if (CRITERIA_LOCKED_STATUSES.has(criteria.hackathon.status)) {
+      throw new AppError('Judging criteria cannot be changed after the hackathon starts.', 409);
+    }
+
+    const updated = await prisma.judgingCriteria.update({
+      where: { id: criteriaId },
+      data,
+    });
+
+    eventBus.emit('audit:log', {
+      actorId,
+      action: 'JUDGING_CRITERIA_UPDATED',
+      entity: 'judgingCriteria',
+      entityId: criteriaId,
+      details: { hackathonId: criteria.hackathonId, fields: Object.keys(data) },
+    });
+
+    return updated;
+  }
+
+  async removeCriteria(criteriaId, actorId) {
+    const criteria = await prisma.judgingCriteria.findUnique({
+      where: { id: criteriaId },
+      include: { hackathon: { select: { status: true } } },
+    });
+
+    if (!criteria) throw new AppError('Criteria not found.', 404);
+    if (CRITERIA_LOCKED_STATUSES.has(criteria.hackathon.status)) {
+      throw new AppError('Judging criteria cannot be removed after the hackathon starts.', 409);
+    }
+
+    await prisma.judgingCriteria.delete({ where: { id: criteriaId } });
+
+    eventBus.emit('audit:log', {
+      actorId,
+      action: 'JUDGING_CRITERIA_DELETED',
+      entity: 'judgingCriteria',
+      entityId: criteriaId,
+      details: { hackathonId: criteria.hackathonId, name: criteria.name },
+    });
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // PUBLIC: Submit a score for a specific criteria on a submission
   // ─────────────────────────────────────────────────────────────────────────
@@ -41,8 +156,11 @@ class ScoringNormalizationService {
     });
     
     if (!criteria) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('Scoring criteria unavailable. Please try again.', 404);
+    }
+
+    if (criteria.hackathon.status !== 'JUDGING') {
+      throw new AppError('Scores can only be submitted during the judging phase.', 409);
     }
 
     const submission = await prisma.submission.findUnique({
@@ -51,12 +169,10 @@ class ScoringNormalizationService {
     });
 
     if (!submission || submission.hackathonId !== criteria.hackathonId) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('Submission does not belong to this judging criteria.', 400);
     }
 
     if (!['SUBMITTED', 'UNDER_REVIEW', 'SCORED'].includes(submission.status)) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('Only submitted projects can be scored.', 400);
     }
 
@@ -71,7 +187,6 @@ class ScoringNormalizationService {
     });
 
     if (!staffAssignment) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('Forbidden. You must be assigned as a JUDGE to evaluate submissions for this event.', 403);
     }
 
@@ -86,12 +201,10 @@ class ScoringNormalizationService {
       });
 
       if (!assignment) {
-        const AppError = require('../../utils/AppError');
         throw new AppError('Forbidden. You are not assigned to judge this submission.', 403);
       }
     }
     if (value < 0 || value > criteria.maxScore) {
-      const AppError = require('../../utils/AppError');
       throw new AppError(
         `Score must be between 0 and ${criteria.maxScore}.`,
         400
@@ -110,13 +223,37 @@ class ScoringNormalizationService {
     });
 
     if (existingScore) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('You have already scored this project.', 403);
+    }
+
+    if (criteria.hackathon.judgingMode === 'MINIMUM_REVIEWS') {
+      const judgeAlreadyReviewed = await prisma.score.findFirst({
+        where: { submissionId, judgeId },
+        select: { id: true },
+      });
+
+      if (!judgeAlreadyReviewed) {
+        const effectiveRequired = await this.recalculateEffectiveReviews(criteria.hackathonId);
+        const distinctReviews = await prisma.score.findMany({
+          where: { submissionId },
+          distinct: ['judgeId'],
+          select: { judgeId: true },
+        });
+
+        if (distinctReviews.length >= effectiveRequired) {
+          throw new AppError('This submission has already received the required number of reviews.', 409);
+        }
+      }
     }
 
     // Create score (no updates allowed)
     const score = await prisma.score.create({
       data: { submissionId, judgeId, criteriaId, value, comment },
+    });
+
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: { status: 'UNDER_REVIEW' },
     });
 
     // Emit event for audit logging
@@ -129,6 +266,19 @@ class ScoringNormalizationService {
     });
 
     return score;
+  }
+
+  async submitBatch(judgeId, scores) {
+    if (!Array.isArray(scores) || scores.length === 0) {
+      throw new AppError('At least one score is required.', 400);
+    }
+
+    const created = [];
+    for (const score of scores) {
+      created.push(await this.submitScore({ judgeId, ...score }));
+    }
+
+    return created;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -144,12 +294,31 @@ class ScoringNormalizationService {
    * @returns {Array<{ submissionId, teamName, finalScore, rank }>}
    */
   async normalizeAndRank(hackathonId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: {
+        id: true,
+        status: true,
+        judgingMode: true,
+        requiredReviewsPerSubmission: true,
+        effectiveRequiredReviewsPerSubmission: true,
+      },
+    });
+
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+    if (hackathon.status !== 'JUDGING') {
+      throw new AppError('Scores can only be normalized during the judging phase.', 409);
+    }
+
+    const effectiveRequired = await this.recalculateEffectiveReviews(hackathonId);
+
     // 1. Fetch all submissions with their scores, criteria, and team info
     const submissions = await prisma.submission.findMany({
       where: { hackathonId, status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SCORED'] } },
       include: {
         scores: {
           include: { criteria: true },
+          orderBy: { createdAt: 'asc' },
         },
         team: { select: { id: true, name: true } },
       },
@@ -162,7 +331,6 @@ class ScoringNormalizationService {
     });
 
     if (criteria.length === 0) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('No judging criteria defined for this hackathon.', 400);
     }
 
@@ -172,7 +340,10 @@ class ScoringNormalizationService {
     const results = [];
 
     for (const submission of submissions) {
-      const finalScore = this._computeFinalScore(submission.scores, criteriaMap);
+      const scoresForRanking = hackathon.judgingMode === 'MINIMUM_REVIEWS'
+        ? this._limitScoresToRequiredReviews(submission.scores, effectiveRequired)
+        : submission.scores;
+      const finalScore = this._computeFinalScore(scoresForRanking, criteriaMap);
       results.push({
         submissionId: submission.id,
         teamId: submission.team.id,
@@ -189,7 +360,7 @@ class ScoringNormalizationService {
 
     // 5. Persist results to database (transactional)
     await prisma.$transaction(
-      results.map((r) =>
+      results.flatMap((r) => [
         prisma.submission.update({
           where: { id: r.submissionId },
           data: {
@@ -197,8 +368,27 @@ class ScoringNormalizationService {
             rank: r.rank,
             status: 'SCORED',
           },
-        })
-      )
+        }),
+        prisma.scoreboardEntry.upsert({
+          where: {
+            hackathonId_submissionId: {
+              hackathonId,
+              submissionId: r.submissionId,
+            },
+          },
+          update: {
+            finalScore: r.finalScore,
+            rank: r.rank,
+            aggregatedAt: new Date(),
+          },
+          create: {
+            hackathonId,
+            submissionId: r.submissionId,
+            finalScore: r.finalScore,
+            rank: r.rank,
+          },
+        }),
+      ])
     );
 
     // 6. Cache leaderboard in Redis sorted set
@@ -305,12 +495,10 @@ class ScoringNormalizationService {
     });
 
     if (!hackathon) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('Hackathon not found.', 404);
     }
 
-    if (['COMPLETED', 'ARCHIVED'].includes(hackathon.status)) {
-      const AppError = require('../../utils/AppError');
+    if (ASSIGNMENT_LOCKED_STATUSES.has(hackathon.status)) {
       throw new AppError('Judging assignments cannot be changed after completion.', 409);
     }
 
@@ -342,12 +530,10 @@ class ScoringNormalizationService {
     ]);
 
     if (submissionCount !== submissionIds.length) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('All assigned submissions must belong to this hackathon and be submitted.', 400);
     }
 
     if (activeJudgeCount !== judgeIds.length) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('All assigned judges must be active judges for this hackathon.', 400);
     }
 
@@ -420,6 +606,138 @@ class ScoringNormalizationService {
       assignedAt: assignment.assignedAt,
       assignedBy: assignment.assignedBy,
     }));
+  }
+
+  async deleteJudgingAssignment(assignmentId, actorId) {
+    const assignment = await prisma.judgingAssignment.findUnique({
+      where: { id: assignmentId },
+      include: { hackathon: { select: { id: true, status: true } } },
+    });
+
+    if (!assignment) throw new AppError('Judging assignment not found.', 404);
+    if (ASSIGNMENT_LOCKED_STATUSES.has(assignment.hackathon.status)) {
+      throw new AppError('Judging assignments cannot be changed after the event is finalized.', 409);
+    }
+
+    await prisma.judgingAssignment.delete({ where: { id: assignmentId } });
+
+    eventBus.emit('audit:log', {
+      actorId,
+      action: 'JUDGING_ASSIGNMENT_DELETED',
+      entity: 'judgingAssignment',
+      entityId: assignmentId,
+      details: {
+        hackathonId: assignment.hackathonId,
+        submissionId: assignment.submissionId,
+        judgeId: assignment.judgeId,
+      },
+    });
+  }
+
+  async getScoresForJudge(judgeId, hackathonId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { status: true },
+    });
+
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+    if (['DRAFT', 'UPCOMING', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'IN_PROGRESS'].includes(hackathon.status)) {
+      throw new AppError('Judge scores are not available before judging begins.', 409);
+    }
+
+    return prisma.score.findMany({
+      where: {
+        judgeId,
+        submission: { hackathonId },
+      },
+      include: {
+        criteria: { select: { id: true, name: true, maxScore: true, weight: true } },
+        submission: {
+          select: {
+            id: true,
+            title: true,
+            team: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: [{ submissionId: 'asc' }, { criteria: { sortOrder: 'asc' } }],
+    });
+  }
+
+  async getReviewProgress(hackathonId) {
+    const effectiveRequired = await this.recalculateEffectiveReviews(hackathonId);
+
+    const submissions = await prisma.submission.findMany({
+      where: {
+        hackathonId,
+        status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'SCORED'] },
+      },
+      include: {
+        team: { select: { id: true, name: true } },
+        scores: {
+          distinct: ['judgeId'],
+          select: { judgeId: true },
+        },
+      },
+      orderBy: { submittedAt: 'asc' },
+    });
+
+    return submissions.map((submission) => ({
+      submissionId: submission.id,
+      title: submission.title,
+      team: submission.team,
+      reviewCount: submission.scores.length,
+      requiredReviews: effectiveRequired,
+      isComplete: submission.scores.length >= effectiveRequired,
+    }));
+  }
+
+  async recalculateEffectiveReviews(hackathonId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { requiredReviewsPerSubmission: true },
+    });
+
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    const judgeCount = await prisma.staffAssignment.count({
+      where: { hackathonId, staffRole: 'JUDGE', isActive: true },
+    });
+
+    const effective = Math.min(hackathon.requiredReviewsPerSubmission || 1, judgeCount || 0);
+
+    await prisma.hackathon.update({
+      where: { id: hackathonId },
+      data: { effectiveRequiredReviewsPerSubmission: effective },
+    });
+
+    return effective;
+  }
+
+  _limitScoresToRequiredReviews(scores, requiredReviews) {
+    if (!requiredReviews || requiredReviews <= 0) return [];
+
+    const scoresByJudge = new Map();
+    for (const score of scores) {
+      if (!scoresByJudge.has(score.judgeId)) {
+        scoresByJudge.set(score.judgeId, []);
+      }
+      scoresByJudge.get(score.judgeId).push(score);
+    }
+
+    const selectedJudgeIds = Array.from(scoresByJudge.entries())
+      .map(([judgeId, judgeScores]) => ({
+        judgeId,
+        firstScoreAt: judgeScores.reduce((earliest, score) => (
+          score.createdAt < earliest ? score.createdAt : earliest
+        ), judgeScores[0].createdAt),
+      }))
+      .sort((a, b) => a.firstScoreAt - b.firstScoreAt)
+      .slice(0, requiredReviews)
+      .map((entry) => entry.judgeId);
+
+    const selected = new Set(selectedJudgeIds);
+    return scores.filter((score) => selected.has(score.judgeId));
   }
 
   /**
@@ -562,19 +880,20 @@ class ScoringNormalizationService {
     });
 
     if (!submission) {
-      const AppError = require('../../utils/AppError');
       throw new AppError('Submission not found.', 404);
+    }
+
+    if (!['COMPLETED', 'ARCHIVED'].includes(submission.hackathon.status)) {
+      throw new AppError('Score breakdown is only visible after final results are published.', 403);
     }
 
     if (user.role === 'PARTICIPANT') {
       const isMember = submission.team.members.some(m => m.userId === user.id);
       if (!isMember) {
-        const AppError = require('../../utils/AppError');
         throw new AppError('You do not have access to this submission.', 403);
       }
 
-      if (submission.hackathon.feedbackVisibility !== 'PUBLIC') {
-        const AppError = require('../../utils/AppError');
+      if (submission.hackathon.feedbackVisibility !== 'RELEASED' && !submission.isFeedbackVisible) {
         throw new AppError('Feedback release is locked until all final results are published.', 403);
       }
     }

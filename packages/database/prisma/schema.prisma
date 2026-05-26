@@ -62,6 +62,11 @@ enum InvitationStatus {
   EXPIRED
 }
 
+enum TeamInvitationType {
+  INVITATION
+  REQUEST
+}
+
 enum SubmissionStatus {
   DRAFT
   SUBMITTED
@@ -99,8 +104,18 @@ enum AuditAction {
   EXPORT_LOGS
   EXPORT_FORMAT_FAILURE
   PROVISION_ADMIN_INVITE
+  USER_UNSUSPENDED
+  ORGANIZER_APPROVED
+  ORGANIZER_REJECTED
+  EXTEND_SESSION
+  SUBMIT_VERIFICATION
+  ROLE_UPGRADE_REQUESTED
   STAFF_INVITED
+  STAFF_INVITATION_RESENT
+  STAFF_INVITATION_CANCELLED
   STAFF_UPDATED
+  STAFF_LEFT
+  STAFF_ROLE_CONFIG_UPDATED
   CERTIFICATE_LINK_FAILURE
   ARCHIVE_FAILURE
   HACKATHON_ARCHIVED
@@ -109,6 +124,34 @@ enum AuditAction {
   PARTICIPANT_CHECKIN
   PARTICIPANT_UNDO_CHECKIN
   SCHEDULE_UPDATED
+  STAFF_INVITATION_ACCEPTED
+  STAFF_LEAD_CHANGED
+  TEAM_CREATED
+  TEAM_UPDATED
+  TEAM_INVITED
+  TEAM_INVITATION_CANCELLED
+  TEAM_INVITATION_RESPONDED
+  TEAM_JOIN_REQUESTED
+  TEAM_MEMBER_JOINED
+  TEAM_MEMBER_LEFT
+  TEAM_MEMBER_KICKED
+  TEAM_LEADERSHIP_TRANSFERRED
+  TEAM_DISBANDED
+  TEAM_AUTO_MATCHED
+  SUBMISSION_CREATED
+  SUBMISSION_UPDATED
+  SUBMISSION_SUBMITTED
+  SUBMISSION_WITHDRAWN
+  MENTORSHIP_REQUEST_CREATED
+  MENTORSHIP_REQUEST_CANCELLED
+  MENTORSHIP_REQUEST_RESPONDED
+  MENTORSHIP_INTERACTION_LOGGED
+  MENTORSHIP_ASSIGNMENT_DEACTIVATED
+  MENTORSHIP_SESSION_SCHEDULED
+  JUDGING_CRITERIA_CREATED
+  JUDGING_CRITERIA_UPDATED
+  JUDGING_CRITERIA_DELETED
+  JUDGING_ASSIGNMENT_DELETED
 }
 
 enum StaffRole {
@@ -132,6 +175,13 @@ enum MentorRequestStatus {
   ACCEPTED
   DECLINED
   CANCELLED
+}
+
+enum MentorSessionStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
 }
 
 enum JudgingPhase {
@@ -271,6 +321,8 @@ model User {
   mentorAssignments        MentorAssignment[]
   mentorRequestsSent       MentorRequest[]             @relation("MentorRequestRequester")
   mentorRequestsReceived   MentorRequest[]             @relation("MentorRequestMentor")
+  mentorSessionsRequested  MentorSession[]             @relation("MentorSessionRequester")
+  mentorSessionsMentored   MentorSession[]             @relation("MentorSessionMentor")
   organizationMemberships  OrganizationMember[]
   discussions              Discussion[]
   discussionComments       DiscussionComment[]
@@ -407,6 +459,7 @@ model Hackathon {
   discussions             Discussion[]
   registrations           Registration[]
   eventFeedbacks          EventFeedback[]
+  mentorSessions          MentorSession[]
   scoreboardEntries       ScoreboardEntry[]
   archiveJobs             ArchiveJob[]
   recommendations         Recommendation[]
@@ -452,6 +505,7 @@ model Team {
   submission        Submission?
   mentorAssignments MentorAssignment[]
   mentorRequests    MentorRequest[]
+  mentorSessions    MentorSession[]
 
   @@unique([hackathonId, name])
   @@map("teams")
@@ -479,6 +533,7 @@ model TeamInvitation {
   senderId   String           @map("sender_id") @db.Uuid
   receiverId String           @map("receiver_id") @db.Uuid
   status     InvitationStatus @default(PENDING)
+  type       TeamInvitationType @default(INVITATION)
   message    String?          @db.Text
   expiresAt  DateTime         @map("expires_at")
   createdAt  DateTime         @default(now()) @map("created_at")
@@ -491,6 +546,7 @@ model TeamInvitation {
 
   @@index([receiverId, status])
   @@index([teamId])
+  @@index([teamId, status, type])
   @@map("team_invitations")
 }
 
@@ -514,6 +570,8 @@ model Submission {
   status             SubmissionStatus @default(DRAFT)
   submittedAt        DateTime?        @map("submitted_at")
   structuredFeedback Json?            @map("structured_feedback")
+  finalScore         Float?           @map("final_score")
+  rank               Int?
   createdAt          DateTime         @default(now()) @map("created_at")
   updatedAt          DateTime         @updatedAt @map("updated_at")
 
@@ -527,6 +585,7 @@ model Submission {
 
   @@index([hackathonId, status])
   @@index([hackathonId, submittedAt])
+  @@index([hackathonId, rank])
   @@map("submissions")
 }
 
@@ -1172,6 +1231,7 @@ model MentorAssignment {
   mentor       User                @relation(fields: [mentorId], references: [id], onDelete: Cascade)
   team         Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
   interactions MentorInteraction[]
+  sessions     MentorSession[]
 
   @@unique([mentorId, teamId])
   @@index([teamId])
@@ -1213,6 +1273,34 @@ model MentorRequest {
   @@index([mentorId])
   @@index([requesterId])
   @@map("mentor_requests")
+}
+
+model MentorSession {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mentorId           String              @map("mentor_id") @db.Uuid
+  requesterId        String              @map("requester_id") @db.Uuid
+  teamId             String              @map("team_id") @db.Uuid
+  hackathonId        String              @map("hackathon_id") @db.Uuid
+  mentorAssignmentId String?             @map("mentor_assignment_id") @db.Uuid
+  startAt            DateTime            @map("start_at")
+  endAt              DateTime            @map("end_at")
+  durationMinutes    Int                 @map("duration_minutes")
+  agenda             String?             @db.Text
+  status             MentorSessionStatus @default(SCHEDULED)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  mentor           User              @relation("MentorSessionMentor", fields: [mentorId], references: [id], onDelete: Cascade)
+  requester        User              @relation("MentorSessionRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  team             Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  hackathon        Hackathon         @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  mentorAssignment MentorAssignment? @relation(fields: [mentorAssignmentId], references: [id], onDelete: SetNull)
+
+  @@index([mentorId, startAt])
+  @@index([requesterId, startAt])
+  @@index([teamId, startAt])
+  @@index([hackathonId, startAt])
+  @@map("mentor_sessions")
 }
 
 // =============================================================================

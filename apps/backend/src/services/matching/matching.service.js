@@ -1,39 +1,50 @@
 // =============================================================================
-// HackET — Team Matching Engine  ⭐
-// =============================================================================
-//
-// Rule-based content-filtering engine for suggesting teams/partners.
-//
-// Algorithm:
-//   1. Load the requesting user's skills from their profile
-//   2. Find all open teams in the given hackathon that are not full
-//   3. Compute intersection score: |user.skills ∩ team.neededSkills| / |team.neededSkills|
-//   4. Apply bonus weight for partial coverage diversity
-//   5. Return top-N teams sorted by match score (descending)
-//
-// This is a pure Use Case layer service — no HTTP concerns.
+// HackET - Team Matching Engine
 // =============================================================================
 
 const prisma = require('../../config/database');
 const AppError = require('../../utils/AppError');
+const eventBus = require('../../utils/eventBus');
+
+const ACTIVE_REGISTRATION_STATUSES = ['REGISTERED', 'CHECKED_IN'];
+
+const clampLimit = (value, fallback = 10, max = 100) => {
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+};
+
+const positivePage = (value) => {
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) || parsed < 1 ? 1 : parsed;
+};
+
+const normalizeList = (value) => {
+  if (!value) return [];
+  const raw = Array.isArray(value) ? value : String(value).split(',');
+  return raw.map((item) => String(item).trim()).filter(Boolean);
+};
+
+const normalizeComparable = (value) => String(value || '').trim().toLowerCase();
 
 class TeamMatchingEngine {
-  /**
-   * Get team suggestions for a user within a hackathon.
-   *
-   * @param {object} params
-   * @param {string} params.userId    - The user looking for a team
-   * @param {string} params.hackathonId - The hackathon context
-   * @param {number} [params.limit=10] - Max results to return
-   * @returns {Array<{ team, matchScore, matchedSkills, missingSkills }>}
-   */
-  async suggestTeams({ userId, hackathonId, limit = 10 }) {
-    // 1. Load user profile and skills
+  async suggestTeams({
+    userId,
+    hackathonId,
+    page = 1,
+    limit = 10,
+    skills,
+    isOpen,
+  }) {
+    const normalizedPage = positivePage(page);
+    const normalizedLimit = clampLimit(limit);
+    const requestedSkills = normalizeList(skills).map(normalizeComparable);
+
     const userProfile = await prisma.userProfile.findUnique({
       where: { userId },
     });
 
-    if (!userProfile || userProfile.skills.length === 0) {
+    if ((!userProfile || userProfile.skills.length === 0) && requestedSkills.length === 0) {
       throw new AppError(
         'Please complete your profile with skills before seeking team matches.',
         400
@@ -41,25 +52,23 @@ class TeamMatchingEngine {
     }
 
     const userSkills = new Set(
-      userProfile.skills.map((s) => s.toLowerCase().trim())
+      (requestedSkills.length > 0 ? requestedSkills : userProfile.skills.map(normalizeComparable))
     );
 
-    // 2. Load hackathon to get team size limits
     const hackathon = await prisma.hackathon.findUnique({
       where: { id: hackathonId },
       select: { maxTeamSize: true, id: true },
     });
 
-    if (!hackathon) {
-      throw new AppError('Hackathon not found.', 404);
-    }
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
 
-    // 3. Find all open teams the user is NOT already a member of
+    const isOpenFilter =
+      isOpen === undefined ? true : String(isOpen).toLowerCase() === 'true';
+
     const teams = await prisma.team.findMany({
       where: {
         hackathonId,
-        isOpen: true,
-        // Exclude teams the user is already in
+        ...(isOpen === undefined ? { isOpen: true } : { isOpen: isOpenFilter }),
         members: {
           none: { userId },
         },
@@ -80,22 +89,20 @@ class TeamMatchingEngine {
       },
     });
 
-    // 4. Score each team
     const scoredTeams = [];
 
     for (const team of teams) {
-      // Skip full teams
       if (team.members.length >= hackathon.maxTeamSize) continue;
 
-      const neededSkills = team.neededSkills.map((s) =>
-        s.toLowerCase().trim()
-      );
+      const neededSkills = team.neededSkills.map(normalizeComparable);
+      if (requestedSkills.length > 0 && !requestedSkills.some((skill) => neededSkills.includes(skill))) {
+        continue;
+      }
 
-      // If team hasn't specified needed skills, use a basic score
       if (neededSkills.length === 0) {
         scoredTeams.push({
           team: this._formatTeam(team),
-          matchScore: 0.1, // Low baseline for teams with no requirements
+          matchScore: 0.1,
           matchedSkills: [],
           missingSkills: [],
           reason: 'Team has no specific skill requirements.',
@@ -103,42 +110,21 @@ class TeamMatchingEngine {
         continue;
       }
 
-      // Compute intersection
-      const matchedSkills = neededSkills.filter((ns) => userSkills.has(ns));
-      const missingSkills = neededSkills.filter((ns) => !userSkills.has(ns));
-
-      // Primary score: coverage ratio
+      const matchedSkills = neededSkills.filter((neededSkill) => userSkills.has(neededSkill));
+      const missingSkills = neededSkills.filter((neededSkill) => !userSkills.has(neededSkill));
       const coverageScore = matchedSkills.length / neededSkills.length;
 
-      // Diversity bonus: bonus for teams that already have some skills covered
-      // (the user fills gaps, not duplicates)
       const existingTeamSkills = new Set();
       for (const member of team.members) {
-        if (member.user.profile) {
-          for (const skill of member.user.profile.skills) {
-            existingTeamSkills.add(skill.toLowerCase().trim());
-          }
+        for (const skill of member.user.profile?.skills || []) {
+          existingTeamSkills.add(normalizeComparable(skill));
         }
       }
 
-      // Skills the user brings that the team doesn't already have
-      const uniqueContribution = matchedSkills.filter(
-        (s) => !existingTeamSkills.has(s)
-      );
-      const diversityBonus =
-        neededSkills.length > 0
-          ? (uniqueContribution.length / neededSkills.length) * 0.2
-          : 0;
-
-      // Team capacity bonus: prefer teams that still have room
-      const capacityRatio =
-        1 - team.members.length / hackathon.maxTeamSize;
-      const capacityBonus = capacityRatio * 0.1;
-
-      const finalScore = Math.min(
-        coverageScore + diversityBonus + capacityBonus,
-        1.0
-      );
+      const uniqueContribution = matchedSkills.filter((skill) => !existingTeamSkills.has(skill));
+      const diversityBonus = (uniqueContribution.length / neededSkills.length) * 0.2;
+      const capacityBonus = (1 - team.members.length / hackathon.maxTeamSize) * 0.1;
+      const finalScore = Math.min(coverageScore + diversityBonus + capacityBonus, 1.0);
 
       scoredTeams.push({
         team: this._formatTeam(team),
@@ -150,71 +136,90 @@ class TeamMatchingEngine {
       });
     }
 
-    // 5. Sort by match score descending and return top-N
     scoredTeams.sort((a, b) => b.matchScore - a.matchScore);
-    
-    // AF1: No Suitable Matches Found
-    if (scoredTeams.length === 0) {
-      return {
-        suggestions: [],
-        metadata: { prompt: 'No suitable matches found at this time. Try again later or broaden your search criteria.' }
-      };
-    }
 
+    const offset = (normalizedPage - 1) * normalizedLimit;
     return {
-      suggestions: scoredTeams.slice(0, limit),
-      metadata: { prompt: null }
+      suggestions: scoredTeams.slice(offset, offset + normalizedLimit),
+      metadata: {
+        prompt: scoredTeams.length === 0
+          ? 'No suitable matches found at this time. Try again later or broaden your search criteria.'
+          : null,
+        pagination: {
+          page: normalizedPage,
+          limit: normalizedLimit,
+          total: scoredTeams.length,
+          totalPages: Math.ceil(scoredTeams.length / normalizedLimit),
+        },
+      },
     };
   }
 
-  /**
-   * Suggest individual participants to a team captain based on skill gaps.
-   *
-   * @param {object} params
-   * @param {string} params.teamId - The team looking for members
-   * @param {number} [params.limit=10]
-   * @returns {Array<{ user, matchScore, matchedSkills }>}
-   */
-  async suggestMembers({ teamId, limit = 10 }) {
-    // Load team with current members and hackathon context
+  async suggestMembers({
+    teamId,
+    requesterId,
+    page = 1,
+    limit = 10,
+    skills,
+    region,
+  }) {
+    const normalizedPage = positivePage(page);
+    const normalizedLimit = clampLimit(limit);
+    const requestedSkills = normalizeList(skills).map(normalizeComparable);
+
     const team = await prisma.team.findUnique({
       where: { id: teamId },
       include: {
-        members: { select: { userId: true } },
+        members: { select: { userId: true, role: true } },
         hackathon: { select: { id: true, maxTeamSize: true } },
       },
     });
 
-    if (!team) {
-      throw new AppError('Team not found.', 404);
+    if (!team) throw new AppError('Team not found.', 404);
+
+    const requesterMembership = team.members.find((member) => member.userId === requesterId);
+    if (!requesterMembership || requesterMembership.role !== 'LEADER') {
+      throw new AppError('Only team leaders can search for candidate members.', 403);
     }
 
     if (team.members.length >= team.hackathon.maxTeamSize) {
       throw new AppError('Team is already full.', 400);
     }
 
-    if (team.neededSkills.length === 0) {
+    const skillBasis = requestedSkills.length > 0
+      ? requestedSkills
+      : team.neededSkills.map(normalizeComparable);
+
+    if (skillBasis.length === 0) {
       throw new AppError(
-        'Please specify needed skills on your team to get member suggestions.',
+        'Please specify needed skills on your team or in the query to get member suggestions.',
         400
       );
     }
 
-    const neededSkills = new Set(
-      team.neededSkills.map((s) => s.toLowerCase().trim())
-    );
-    const existingMemberIds = team.members.map((m) => m.userId);
+    const neededSkills = new Set(skillBasis);
+    const existingMemberIds = team.members.map((member) => member.userId);
 
-    // Find participants NOT already in a team for this hackathon
-    // and NOT already in this team
     const candidates = await prisma.userProfile.findMany({
       where: {
-        isSeekingTeam: true, // AF2: Participant Not Seeking Team
+        isSeekingTeam: true,
+        ...(region ? { region: { equals: region, mode: 'insensitive' } } : {}),
         user: {
           role: 'PARTICIPANT',
           isActive: true,
           id: { notIn: existingMemberIds },
-          // Not already in a team for this hackathon
+          registrations: {
+            some: {
+              hackathonId: team.hackathon.id,
+              status: { in: ACTIVE_REGISTRATION_STATUSES },
+            },
+          },
+          staffAssignments: {
+            none: {
+              hackathonId: team.hackathon.id,
+              isActive: true,
+            },
+          },
           teamMemberships: {
             none: {
               team: { hackathonId: team.hackathon.id },
@@ -230,49 +235,100 @@ class TeamMatchingEngine {
       },
     });
 
-    // Score candidates
-    const scored = candidates.map((profile) => {
-      const candidateSkills = profile.skills.map((s) =>
-        s.toLowerCase().trim()
-      );
-      const matchedSkills = candidateSkills.filter((s) => neededSkills.has(s));
-      const matchScore =
-        neededSkills.size > 0 ? matchedSkills.length / neededSkills.size : 0;
+    const scored = candidates
+      .map((profile) => {
+        const candidateSkills = profile.skills.map(normalizeComparable);
+        const matchedSkills = candidateSkills.filter((skill) => neededSkills.has(skill));
+        const matchScore = neededSkills.size > 0 ? matchedSkills.length / neededSkills.size : 0;
 
-      return {
-        user: {
-          id: profile.user.id,
-          email: profile.user.email,
-          firstName: profile.firstName,
-          lastName: profile.lastName,
-          avatarUrl: profile.avatarUrl,
-          skills: profile.skills,
-          university: profile.university,
-        },
-        matchScore: Math.round(matchScore * 1000) / 1000,
-        matchedSkills,
-      };
-    });
+        return {
+          user: {
+            id: profile.user.id,
+            email: profile.user.email,
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+            avatarUrl: profile.avatarUrl,
+            skills: profile.skills,
+            university: profile.university,
+            city: profile.city,
+            region: profile.region,
+          },
+          matchScore: Math.round(matchScore * 1000) / 1000,
+          matchedSkills,
+        };
+      })
+      .filter((candidate) => candidate.matchScore > 0);
 
     scored.sort((a, b) => b.matchScore - a.matchScore);
-    
-    // AF1: No Suitable Matches Found
-    if (scored.length === 0) {
-      return {
-        suggestions: [],
-        metadata: { prompt: 'No suitable matches found at this time. Try again later or broaden your search criteria.' }
-      };
-    }
 
+    const offset = (normalizedPage - 1) * normalizedLimit;
     return {
-      suggestions: scored.slice(0, limit),
-      metadata: { prompt: null }
+      suggestions: scored.slice(offset, offset + normalizedLimit),
+      metadata: {
+        prompt: scored.length === 0
+          ? 'No suitable matches found at this time. Try again later or broaden your search criteria.'
+          : null,
+        pagination: {
+          page: normalizedPage,
+          limit: normalizedLimit,
+          total: scored.length,
+          totalPages: Math.ceil(scored.length / normalizedLimit),
+        },
+      },
     };
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // PRIVATE HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
+  async autoMatch({ userId, hackathonId, skills }) {
+    await this._assertAutoMatchEligible(userId, hackathonId);
+
+    const { suggestions } = await this.suggestTeams({
+      userId,
+      hackathonId,
+      limit: 1,
+      page: 1,
+      skills,
+      isOpen: true,
+    });
+
+    if (suggestions.length === 0) {
+      throw new AppError('No open team is currently available for auto-match.', 404);
+    }
+
+    const teamId = suggestions[0].team.id;
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: {
+        members: true,
+        hackathon: { select: { maxTeamSize: true } },
+      },
+    });
+
+    if (!team || !team.isOpen || team.members.length >= team.hackathon.maxTeamSize) {
+      throw new AppError('Selected team is no longer available for auto-match.', 409);
+    }
+
+    const membership = await prisma.teamMember.create({
+      data: { teamId, userId, role: 'MEMBER' },
+      include: {
+        team: { select: { id: true, name: true, hackathonId: true } },
+      },
+    });
+
+    eventBus.emit('audit:log', {
+      actorId: userId,
+      action: 'TEAM_AUTO_MATCHED',
+      entity: 'team',
+      entityId: teamId,
+      details: { hackathonId, matchScore: suggestions[0].matchScore },
+    });
+
+    eventBus.emit('team:auto_matched', { teamId, userId, hackathonId });
+
+    return {
+      membership,
+      match: suggestions[0],
+    };
+  }
 
   _formatTeam(team) {
     return {
@@ -282,12 +338,12 @@ class TeamMatchingEngine {
       neededSkills: team.neededSkills,
       isOpen: team.isOpen,
       memberCount: team.members.length,
-      members: team.members.map((m) => ({
-        userId: m.user.id,
-        name: m.user.profile
-          ? `${m.user.profile.firstName} ${m.user.profile.lastName}`
+      members: team.members.map((member) => ({
+        userId: member.user.id,
+        name: member.user.profile
+          ? [member.user.profile.firstName, member.user.profile.lastName].filter(Boolean).join(' ')
           : 'Unknown',
-        skills: m.user.profile?.skills || [],
+        skills: member.user.profile?.skills || [],
       })),
     };
   }
@@ -304,6 +360,31 @@ class TeamMatchingEngine {
       parts.push(`Team still needs: ${missingSkills.join(', ')}.`);
     }
     return parts.join(' ') || 'General match.';
+  }
+
+  async _assertAutoMatchEligible(userId, hackathonId) {
+    const [registration, staffAssignment, existingTeam] = await Promise.all([
+      prisma.registration.findUnique({
+        where: { userId_hackathonId: { userId, hackathonId } },
+        select: { status: true },
+      }),
+      prisma.staffAssignment.findFirst({
+        where: { userId, hackathonId, isActive: true },
+      }),
+      prisma.teamMember.findFirst({
+        where: { userId, team: { hackathonId } },
+      }),
+    ]);
+
+    if (!registration || !ACTIVE_REGISTRATION_STATUSES.includes(registration.status)) {
+      throw new AppError('You must be actively registered for this hackathon before auto-match.', 403);
+    }
+    if (staffAssignment) {
+      throw new AppError('Active event staff cannot compete in team matching.', 403);
+    }
+    if (existingTeam) {
+      throw new AppError('You are already a member of a team for this hackathon.', 409);
+    }
   }
 }
 
