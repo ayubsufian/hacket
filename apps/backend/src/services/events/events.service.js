@@ -1121,6 +1121,7 @@ class EventsService {
     this._validateEventConfiguration(updatedData);
 
     const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
+    await this._assertTeamsWithinSizeBoundsForStatus(hackathonId, newStatus);
 
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
@@ -1143,6 +1144,8 @@ class EventsService {
     if (hackathon.status === 'IN_PROGRESS' && !reason) {
       throw new AppError('A reason is required to cancel a hackathon that is currently in progress.', 400);
     }
+
+    await this._assertTeamsWithinSizeBoundsForStatus(hackathonId, 'CANCELLED');
 
     // Use a transaction to update hackathon and cascade to registrations
     const updated = await prisma.$transaction(async (tx) => {
@@ -1183,6 +1186,8 @@ class EventsService {
       throw new AppError(`Hackathons in the ${hackathon.status} state cannot be suspended.`, 409);
     }
 
+    await this._assertTeamsWithinSizeBoundsForStatus(hackathonId, 'SUSPENDED');
+
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
       data: { status: 'SUSPENDED' }
@@ -1204,6 +1209,7 @@ class EventsService {
     this._validateEventConfiguration({ ...hackathon, status: newStatus });
 
     const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
+    await this._assertTeamsWithinSizeBoundsForStatus(hackathonId, newStatus);
 
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
@@ -1240,6 +1246,7 @@ class EventsService {
     this._validateEventConfiguration({ ...mergedData, status: newStatus });
 
     const judgingStartData = await this._buildJudgingStartData(hackathonId, hackathon.status, newStatus);
+    await this._assertTeamsWithinSizeBoundsForStatus(hackathonId, newStatus);
 
     const updated = await prisma.hackathon.update({
       where: { id: hackathonId },
@@ -1260,6 +1267,44 @@ class EventsService {
 
     await redisClient.del('events:active');
     return updated;
+  }
+
+  async _assertTeamsWithinSizeBoundsForStatus(hackathonId, newStatus) {
+    const competitionLockedStatuses = ['IN_PROGRESS', 'JUDGING', 'COMPLETED', 'CANCELLED', 'SUSPENDED', 'ARCHIVED'];
+    if (!competitionLockedStatuses.includes(newStatus)) return;
+
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { minTeamSize: true, maxTeamSize: true },
+    });
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+
+    const teams = await prisma.team.findMany({
+      where: { hackathonId },
+      include: { _count: { select: { members: true } } },
+    });
+
+    const invalidTeams = teams.filter((team) => (
+      team._count.members < hackathon.minTeamSize ||
+      team._count.members > hackathon.maxTeamSize
+    ));
+
+    if (invalidTeams.length > 0) {
+      throw Object.assign(
+        new AppError('Hackathon cannot enter this phase while teams violate size limits.', 409),
+        {
+          data: {
+            invalidTeams: invalidTeams.map((team) => ({
+              id: team.id,
+              name: team.name,
+              memberCount: team._count.members,
+              minTeamSize: hackathon.minTeamSize,
+              maxTeamSize: hackathon.maxTeamSize,
+            })),
+          },
+        }
+      );
+    }
   }
 
   _calculateCurrentPhase(hackathon) {
@@ -1384,6 +1429,8 @@ class EventsService {
         },
       );
     }
+
+    await this._assertTeamsWithinSizeBoundsForStatus(hackathonId, 'COMPLETED');
 
     const leaderboard = scoringCompleteness.eligibleSubmissions > 0
       ? await scoringService.normalizeAndRank(hackathonId)

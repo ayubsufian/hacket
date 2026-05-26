@@ -4,6 +4,7 @@
 // =============================================================================
 
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 
 /**
  * Global API rate limiter.
@@ -53,8 +54,27 @@ const passwordResetLimiter = rateLimit({
   },
 });
 
+/**
+ * Team invitation limiter.
+ * Limits invite spam per authenticated user when req.user is available,
+ * falling back to IP for unauthenticated/edge cases.
+ */
+const invitationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
+  message: {
+    success: false,
+    status: 'fail',
+    message: 'Too many team invitations. Please try again after 1 hour.',
+  },
+});
+
 module.exports = {
   globalLimiter,
   authLimiter,
   passwordResetLimiter,
+  invitationLimiter,
 };

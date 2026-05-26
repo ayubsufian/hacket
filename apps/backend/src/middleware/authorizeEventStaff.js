@@ -16,7 +16,7 @@ const AppError = require('../utils/AppError');
 const authorizeEventStaff = (...allowedRoles) => {
   return async (req, res, next) => {
     try {
-      const eventId = req.params.eventId || req.params.id; // Support both route parameter names
+      const eventId = req.params.eventId || req.params.hackathonId || req.params.id; // Support common route parameter names
 
       if (!eventId) {
         return next(new AppError('Event ID is required for authorization.', 400));
