@@ -26,7 +26,15 @@ class SubmissionsService {
   /**
    * Create or replace the editable submission payload for a team.
    */
-  async upsert({ teamId, userId, data }) {
+  async upsert({ teamId, hackathonId, userId, data }) {
+    if (!teamId && !hackathonId) {
+      throw new AppError('Either teamId or hackathonId is required.', 400);
+    }
+
+    if (!teamId) {
+      teamId = await this._resolveSoloSubmissionTeam(hackathonId, userId);
+    }
+
     const membership = await this._ensureTeamMember(teamId, userId);
     const team = await this._getTeamForSubmission(teamId);
 
@@ -429,6 +437,66 @@ class SubmissionsService {
 
     if (!team) throw new AppError('Team not found.', 404);
     return team;
+  }
+
+  async _resolveSoloSubmissionTeam(hackathonId, userId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: {
+        id: true,
+        minTeamSize: true,
+        maxTeamSize: true,
+        status: true,
+        organizerId: true,
+      },
+    });
+
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+    if (hackathon.minTeamSize > 1) {
+      throw new AppError('This hackathon requires a team submission. Provide a teamId.', 400);
+    }
+
+    const [registration, staffAssignment, existingMembership, profile] = await Promise.all([
+      prisma.registration.findUnique({
+        where: { userId_hackathonId: { userId, hackathonId } },
+        select: { status: true },
+      }),
+      prisma.staffAssignment.findFirst({
+        where: { userId, hackathonId, isActive: true },
+      }),
+      prisma.teamMember.findFirst({
+        where: { userId, team: { hackathonId } },
+        select: { teamId: true },
+      }),
+      prisma.userProfile.findUnique({
+        where: { userId },
+        select: { firstName: true, lastName: true },
+      }),
+    ]);
+
+    if (!registration || !['REGISTERED', 'CHECKED_IN'].includes(registration.status)) {
+      throw new AppError('You must be actively registered for this hackathon before submitting.', 403);
+    }
+    if (hackathon.organizerId === userId || staffAssignment) {
+      throw new AppError('Conflict of interest: event staff cannot submit as participants.', 403);
+    }
+    if (existingMembership) return existingMembership.teamId;
+
+    const displayName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || 'Participant';
+    const team = await prisma.team.create({
+      data: {
+        hackathonId,
+        name: `${displayName}'s Solo Submission ${userId.substring(0, 8)}`,
+        isOpen: false,
+        isAutoCreatedSolo: true,
+        members: {
+          create: { userId, role: 'LEADER' },
+        },
+      },
+      select: { id: true },
+    });
+
+    return team.id;
   }
 
   _assertSubmissionWindowOpen(hackathon) {

@@ -9,6 +9,9 @@ END $$;
 ALTER TABLE "team_invitations"
   ADD COLUMN IF NOT EXISTS "type" "TeamInvitationType" NOT NULL DEFAULT 'INVITATION';
 
+ALTER TABLE "teams"
+  ADD COLUMN IF NOT EXISTS "is_auto_created_solo" BOOLEAN NOT NULL DEFAULT false;
+
 CREATE INDEX IF NOT EXISTS "team_invitations_team_id_status_type_idx"
   ON "team_invitations"("team_id", "status", "type");
 

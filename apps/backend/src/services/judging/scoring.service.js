@@ -780,7 +780,7 @@ class ScoringNormalizationService {
     } else {
       // AF1: Insufficient Scores Warning
       eventBus.emit('audit:log', {
-        actorId: 'SYSTEM',
+        actorId: null,
         action: 'WARNING_INSUFFICIENT_SCORES',
         entity: 'submission',
         entityId: scores[0].submissionId,
@@ -885,6 +885,28 @@ class ScoringNormalizationService {
 
     if (!['COMPLETED', 'ARCHIVED'].includes(submission.hackathon.status)) {
       throw new AppError('Score breakdown is only visible after final results are published.', 403);
+    }
+
+    if (user.role !== 'ADMIN') {
+      const isParticipantMember = submission.team.members.some(m => m.userId === user.id);
+      const isOrganizer = submission.hackathon.organizerId === user.id;
+      let isEventStaff = false;
+
+      if (!isParticipantMember && !isOrganizer) {
+        const staff = await prisma.staffAssignment.findFirst({
+          where: {
+            userId: user.id,
+            hackathonId: submission.hackathonId,
+            isActive: true,
+            staffRole: { in: ['CO_ORGANIZER', 'TECHNICAL_LEAD', 'JUDGE'] },
+          },
+        });
+        isEventStaff = !!staff;
+      }
+
+      if (!isParticipantMember && !isOrganizer && !isEventStaff) {
+        throw new AppError('You do not have access to this score breakdown.', 403);
+      }
     }
 
     if (user.role === 'PARTICIPANT') {

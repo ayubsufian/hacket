@@ -560,10 +560,11 @@ class EventsService {
   }
 
   /**
-   * Register a participant for a hackathon (creates a solo team).
+   * Register a participant for a hackathon.
    * @param {string} hackathonId
    * @param {string} userId
-   * @returns {object} Created team membership
+   * @returns {object} Registration result. Team membership is created explicitly
+   * or lazily for solo submissions.
    */
   async registerParticipant(hackathonId, userId, { inviteToken = null } = {}) {
     const hackathon = await prisma.hackathon.findUnique({
@@ -655,9 +656,8 @@ class EventsService {
       }
     }
 
-    const teamName = this._buildSoloTeamName(profile, userId);
-
-    // Create Registration and solo team atomically
+    // Create Registration atomically. Teams are formed explicitly, and solo
+    // submission teams are created lazily by the submissions service when needed.
     const result = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "hackathons" WHERE id = ${hackathonId}::uuid FOR UPDATE`;
 
@@ -770,25 +770,7 @@ class EventsService {
         throw new AppError('You are already a member of a team for this hackathon.', 409);
       }
 
-      // 2. Create solo team + membership
-      const team = existingTeam ? null : await tx.team.create({
-        data: {
-          hackathonId,
-          name: teamName,
-          members: {
-            create: { userId, role: 'LEADER' },
-          },
-        },
-        include: {
-          members: {
-            include: {
-              user: { select: { id: true, email: true } },
-            },
-          },
-        },
-      });
-
-      return { registration, team, status: nextStatus, waitlistPosition: null };
+      return { registration, team: null, status: nextStatus, waitlistPosition: null };
     });
 
     return result;
@@ -965,7 +947,23 @@ class EventsService {
     });
 
     if (!membership) {
-      throw new AppError('Registration record is missing its team membership. Please contact support.', 409);
+      await prisma.$transaction(async (tx) => {
+        await tx.registration.updateMany({
+          where: { userId, hackathonId },
+          data: { status: 'WITHDRAWN', waitlistPosition: null },
+        });
+
+        await this._promoteNextWaitlistedParticipant(tx, hackathonId);
+      });
+
+      eventBus.emit('audit:log', {
+        actorId: userId,
+        action: 'DELETE',
+        entity: 'registration',
+        entityId: userId,
+        details: { hackathonId },
+      });
+      return;
     }
 
     const team = membership.team;
@@ -1743,14 +1741,6 @@ class EventsService {
     };
   }
 
-  _buildSoloTeamName(profile, userId) {
-    const displayName = profile
-      ? [profile.firstName, profile.lastName].filter(Boolean).join(' ')
-      : 'Participant';
-
-    return `${displayName || 'Participant'}'s Team ${userId.substring(0, 8)}`;
-  }
-
   async _promoteNextWaitlistedParticipant(tx, hackathonId) {
     const nextRegistration = await tx.registration.findFirst({
       where: {
@@ -1782,25 +1772,6 @@ class EventsService {
         checkedInAt: null,
       },
     });
-
-    const existingTeam = await tx.teamMember.findFirst({
-      where: {
-        userId: nextRegistration.userId,
-        team: { hackathonId },
-      },
-    });
-
-    if (!existingTeam) {
-      await tx.team.create({
-        data: {
-          hackathonId,
-          name: this._buildSoloTeamName(nextRegistration.user.profile, nextRegistration.userId),
-          members: {
-            create: { userId: nextRegistration.userId, role: 'LEADER' },
-          },
-        },
-      });
-    }
 
     if (nextRegistration.waitlistPosition) {
       await tx.registration.updateMany({

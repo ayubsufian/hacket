@@ -15,6 +15,7 @@ exports.upsert = catchAsync(async (req, res) => {
 
   const submission = await submissionsService.upsert({
     teamId: req.body.teamId,
+    hackathonId: req.body.hackathonId,
     userId: req.user.id,
     data: req.body,
   });

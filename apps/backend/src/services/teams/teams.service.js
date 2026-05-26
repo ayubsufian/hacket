@@ -73,6 +73,7 @@ class TeamsService {
 
     const where = {};
     if (hackathonId) where.hackathonId = hackathonId;
+    where.isAutoCreatedSolo = false;
     if (typeof isOpen === 'boolean') where.isOpen = isOpen;
     if (typeof isOpen === 'string') where.isOpen = isOpen === 'true';
     if (search) {
@@ -187,7 +188,7 @@ class TeamsService {
     const normalizedLimit = clampLimit(limit);
     const offset = (normalizedPage - 1) * normalizedLimit;
 
-    const where = { userId };
+    const where = { userId, team: { isAutoCreatedSolo: false } };
     const [memberships, total] = await Promise.all([
       prisma.teamMember.findMany({
         where,
@@ -421,9 +422,6 @@ class TeamsService {
     });
 
     if (!invitation) throw new AppError('Invitation or request not found.', 404);
-    if (invitation.receiverId !== userId) {
-      throw new AppError('This invitation or request is not addressed to you.', 403);
-    }
     if (invitation.status !== 'PENDING') {
       throw new AppError(`This invitation or request is already ${invitation.status.toLowerCase()}.`, 400);
     }
@@ -441,6 +439,8 @@ class TeamsService {
 
     if (isJoinRequest) {
       await this._ensureLeader(invitation.teamId, userId);
+    } else if (invitation.receiverId !== userId) {
+      throw new AppError('This invitation is not addressed to you.', 403);
     }
 
     if (accept) {
@@ -695,6 +695,14 @@ class TeamsService {
       prisma.teamMember.update({
         where: { id: targetMembership.id },
         data: { role: 'LEADER' },
+      }),
+      prisma.teamInvitation.updateMany({
+        where: {
+          teamId,
+          type: 'REQUEST',
+          status: 'PENDING',
+        },
+        data: { receiverId: newLeaderUserId },
       }),
     ]);
 

@@ -495,6 +495,7 @@ model Team {
   description  String?  @db.Text
   neededSkills String[] @default([]) @map("needed_skills")
   isOpen       Boolean  @default(true) @map("is_open")
+  isAutoCreatedSolo Boolean @default(false) @map("is_auto_created_solo")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
