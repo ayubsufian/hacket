@@ -32,7 +32,8 @@ const uploadMiddleware = (req, res, next) => {
 const fileUrlSchema = Joi.string().max(2048);
 
 const upsertSchema = Joi.object({
-  teamId: Joi.string().uuid().required(),
+  teamId: Joi.string().uuid(),
+  hackathonId: Joi.string().uuid(),
   title: Joi.string().min(3).max(255).required(),
   description: Joi.string().max(5000).allow(null, ''),
   githubUrl: Joi.string().uri().allow(null, ''),
@@ -40,7 +41,7 @@ const upsertSchema = Joi.object({
   demoUrl: Joi.string().uri().allow(null, ''),
   slidesUrl: Joi.string().uri().allow(null, ''),
   fileUrls: Joi.array().items(fileUrlSchema).max(10).default([]),
-});
+}).xor('teamId', 'hackathonId');
 
 const patchSchema = Joi.object({
   title: Joi.string().min(3).max(255),

@@ -5,13 +5,12 @@ const authenticate = require('../middleware/auth');
 const router = Router();
 
 // ── Authenticated Only ──────────────────────────────────────────────────
-// Technical Docs: /api/v1/storage/submissions/:entityId/spec.pdf
+// Submission artifacts require event-scoped authorization.
 router.get(
-  '/submissions/:entityId/spec.pdf',
+  '/submissions/:entityId/:filename',
   authenticate,
   (req, res, next) => {
     req.params.folder = 'submissions';
-    req.params.filename = 'spec.pdf';
     next();
   },
   storageController.getAuthenticatedBlob

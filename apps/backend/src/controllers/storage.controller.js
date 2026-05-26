@@ -3,6 +3,7 @@ const path = require('path');
 const storageService = require('../services/storage/storage.service');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
+const prisma = require('../config/database');
 
 /**
  * 2026 Security: Validate path segments to prevent path traversal attacks
@@ -53,5 +54,42 @@ exports.getAuthenticatedBlob = catchAsync(async (req, res, next) => {
     return next(new AppError('File not found', 404));
   }
 
+  if (folder === 'submissions') {
+    await authorizeSubmissionBlob(req.user, entityId);
+  }
+
   res.sendFile(absolutePath);
 });
+
+async function authorizeSubmissionBlob(user, submissionId) {
+  const submission = await prisma.submission.findUnique({
+    where: { id: submissionId },
+    include: {
+      team: { include: { members: true } },
+      hackathon: { select: { organizerId: true } },
+    },
+  });
+
+  if (!submission) {
+    throw new AppError('Submission not found.', 404);
+  }
+
+  if (user.role === 'ADMIN') return;
+
+  const isTeamMember = submission.team.members.some((member) => member.userId === user.id);
+  const isOrganizer = submission.hackathon.organizerId === user.id;
+  if (isTeamMember || isOrganizer) return;
+
+  const staff = await prisma.staffAssignment.findFirst({
+    where: {
+      userId: user.id,
+      hackathonId: submission.hackathonId,
+      isActive: true,
+      staffRole: { in: ['CO_ORGANIZER', 'TECHNICAL_LEAD', 'JUDGE'] },
+    },
+  });
+
+  if (!staff) {
+    throw new AppError('You do not have access to this submission file.', 403);
+  }
+}

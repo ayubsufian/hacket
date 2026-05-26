@@ -75,8 +75,8 @@ router.get(
 router.delete('/assignments/:assignmentId', judgingController.deleteAssignment);
 
 router.get('/scores/me', judgingController.getMyScores);
-router.post('/scores', validate(scoreSchema), judgingController.submitScore);
 router.post('/scores/batch', validate(batchScoreSchema), judgingController.submitBatchScores);
+router.post('/scores', validate(scoreSchema), judgingController.submitScore);
 
 router.post(
   '/normalize/:hackathonId',

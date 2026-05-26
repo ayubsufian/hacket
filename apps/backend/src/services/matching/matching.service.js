@@ -7,6 +7,14 @@ const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
 
 const ACTIVE_REGISTRATION_STATUSES = ['REGISTERED', 'CHECKED_IN'];
+const TEAM_FORMATION_LOCKED_STATUSES = [
+  'IN_PROGRESS',
+  'JUDGING',
+  'COMPLETED',
+  'CANCELLED',
+  'SUSPENDED',
+  'ARCHIVED',
+];
 
 const clampLimit = (value, fallback = 10, max = 100) => {
   const parsed = parseInt(value, 10);
@@ -57,10 +65,11 @@ class TeamMatchingEngine {
 
     const hackathon = await prisma.hackathon.findUnique({
       where: { id: hackathonId },
-      select: { maxTeamSize: true, id: true },
+      select: { maxTeamSize: true, id: true, status: true },
     });
 
     if (!hackathon) throw new AppError('Hackathon not found.', 404);
+    await this._assertCanSeekTeam(userId, hackathonId, hackathon);
 
     const isOpenFilter =
       isOpen === undefined ? true : String(isOpen).toLowerCase() === 'true';
@@ -68,6 +77,7 @@ class TeamMatchingEngine {
     const teams = await prisma.team.findMany({
       where: {
         hackathonId,
+        isAutoCreatedSolo: false,
         ...(isOpen === undefined ? { isOpen: true } : { isOpen: isOpenFilter }),
         members: {
           none: { userId },
@@ -171,11 +181,14 @@ class TeamMatchingEngine {
       where: { id: teamId },
       include: {
         members: { select: { userId: true, role: true } },
-        hackathon: { select: { id: true, maxTeamSize: true } },
+        hackathon: { select: { id: true, maxTeamSize: true, status: true } },
       },
     });
 
     if (!team) throw new AppError('Team not found.', 404);
+    if (team.isAutoCreatedSolo) {
+      throw new AppError('Solo submission teams cannot search for additional members.', 409);
+    }
 
     const requesterMembership = team.members.find((member) => member.userId === requesterId);
     if (!requesterMembership || requesterMembership.role !== 'LEADER') {
@@ -184,6 +197,12 @@ class TeamMatchingEngine {
 
     if (team.members.length >= team.hackathon.maxTeamSize) {
       throw new AppError('Team is already full.', 400);
+    }
+    if (TEAM_FORMATION_LOCKED_STATUSES.includes(team.hackathon.status)) {
+      throw new AppError('Member suggestions are locked for this hackathon status.', 409);
+    }
+    if (team.hackathon.maxTeamSize <= 1) {
+      throw new AppError('This hackathon is configured for solo participation only.', 409);
     }
 
     const skillBasis = requestedSkills.length > 0
@@ -363,6 +382,27 @@ class TeamMatchingEngine {
   }
 
   async _assertAutoMatchEligible(userId, hackathonId) {
+    const [hackathon, registration, staffAssignment, existingTeam] = await Promise.all([
+      prisma.hackathon.findUnique({
+        where: { id: hackathonId },
+        select: { status: true, maxTeamSize: true },
+      }),
+      prisma.registration.findUnique({
+        where: { userId_hackathonId: { userId, hackathonId } },
+        select: { status: true },
+      }),
+      prisma.staffAssignment.findFirst({
+        where: { userId, hackathonId, isActive: true },
+      }),
+      prisma.teamMember.findFirst({
+        where: { userId, team: { hackathonId } },
+      }),
+    ]);
+
+    this._assertCanSeekTeamResult({ hackathon, registration, staffAssignment, existingTeam });
+  }
+
+  async _assertCanSeekTeam(userId, hackathonId, hackathon) {
     const [registration, staffAssignment, existingTeam] = await Promise.all([
       prisma.registration.findUnique({
         where: { userId_hackathonId: { userId, hackathonId } },
@@ -376,15 +416,22 @@ class TeamMatchingEngine {
       }),
     ]);
 
+    this._assertCanSeekTeamResult({ hackathon, registration, staffAssignment, existingTeam });
+  }
+
+  _assertCanSeekTeamResult({ hackathon, registration, staffAssignment, existingTeam }) {
+    if (!hackathon) throw new AppError('Hackathon not found.', 404);
+    if (TEAM_FORMATION_LOCKED_STATUSES.includes(hackathon.status)) {
+      throw new AppError('Team matching is locked for this hackathon status.', 409);
+    }
+    if (hackathon.maxTeamSize <= 1) {
+      throw new AppError('This hackathon is configured for solo participation only.', 409);
+    }
     if (!registration || !ACTIVE_REGISTRATION_STATUSES.includes(registration.status)) {
-      throw new AppError('You must be actively registered for this hackathon before auto-match.', 403);
+      throw new AppError('You must be actively registered for this hackathon before team matching.', 403);
     }
-    if (staffAssignment) {
-      throw new AppError('Active event staff cannot compete in team matching.', 403);
-    }
-    if (existingTeam) {
-      throw new AppError('You are already a member of a team for this hackathon.', 409);
-    }
+    if (staffAssignment) throw new AppError('Active event staff cannot compete in team matching.', 403);
+    if (existingTeam) throw new AppError('You are already a member of a team for this hackathon.', 409);
   }
 }
 
