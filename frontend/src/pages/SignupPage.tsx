@@ -11,6 +11,8 @@ type Role = 'PARTICIPANT' | 'ORGANIZER' | 'JUDGE' | 'MENTOR'
 const roles = [
   { id: 'PARTICIPANT' as Role, title: 'Participant', desc: 'Join hackathons' },
   { id: 'ORGANIZER' as Role, title: 'Organizer', desc: 'Host events' },
+  { id: 'JUDGE' as Role, title: 'Judge', desc: 'Evaluate submissions' },
+  { id: 'MENTOR' as Role, title: 'Mentor', desc: 'Guide teams' },
 ]
 
 export default function SignupPage() {

@@ -174,7 +174,12 @@ export default function EventDetailsPage() {
                 <div className="mt-0.5"><Users size={18} className="text-gray-400" /></div>
                 <div>
                   <p className="text-sm font-medium text-gray-900">Team Size</p>
-                  <p className="text-sm text-gray-500">{event.minTeamSize} to {event.maxTeamSize} members</p>
+                  <p className="text-sm text-gray-500">
+                    {event.minTeamSize} to {event.maxTeamSize} members
+                    {event.minTeamSize === 1 && (
+                      <span className="ml-2 text-xs text-emerald-600 font-medium">(Solo participants welcome!)</span>
+                    )}
+                  </p>
                 </div>
               </li>
             </ul>

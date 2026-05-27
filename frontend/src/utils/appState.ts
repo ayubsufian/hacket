@@ -11,6 +11,8 @@ export function getDashboardRoute(role?: UserRole | null) {
       return '/organizer'
     case 'JUDGE':
       return '/judge'
+    case 'MENTOR':
+      return '/judge'
     default:
       return '/dashboard'
   }

@@ -65,10 +65,10 @@ export default function JudgeDashboard() {
         finally { setScoring(false) }
     }
 
-    if (!isAuthenticated || (user?.role !== 'JUDGE' && user?.role !== 'ADMIN')) return (
+    if (!isAuthenticated || (user?.role !== 'JUDGE' && user?.role !== 'MENTOR' && user?.role !== 'ADMIN')) return (
         <div className="py-20 text-center">
             <h1 className="text-lg font-semibold text-gray-900">Judging</h1>
-            <p className="mt-1 text-sm text-gray-500">Judges and admins only.</p>
+            <p className="mt-1 text-sm text-gray-500">Judges, mentors, and admins only.</p>
             <Link to="/login" className="btn-primary mt-4 inline-block">Log in</Link>
         </div>
     )

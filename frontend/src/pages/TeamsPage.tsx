@@ -103,11 +103,13 @@ export default function TeamsPage() {
   const handleInvite = async (e: FormEvent) => {
     e.preventDefault()
     if (!team || !form.inviteEmail) return
-    
+
     try {
       setActionLoading(true)
-      // Note: This would need user lookup by email, which isn't implemented in backend yet
-      info('Team invitation feature requires backend user lookup by email')
+      // TODO: Backend needs a user lookup endpoint (e.g., GET /users/lookup?email=xxx)
+      // to convert email to receiverId (UUID) before calling sendTeamInvitation.
+      // Current backend expects: POST /teams/:id/invite { receiverId: string(UUID), message?: string }
+      info('Team invitation requires user lookup by email. Feature pending backend endpoint.')
       setShowInvite(false)
       setForm({ ...form, inviteEmail: '', inviteMessage: '' })
     } catch (err: any) {

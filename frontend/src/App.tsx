@@ -45,7 +45,7 @@ function App() {
               <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
 
               {/* Role-restricted */}
-              <Route path="/judge" element={<ProtectedRoute roles={['JUDGE', 'ADMIN']}><JudgeDashboard /></ProtectedRoute>} />
+              <Route path="/judge" element={<ProtectedRoute roles={['JUDGE', 'MENTOR', 'ADMIN']}><JudgeDashboard /></ProtectedRoute>} />
               <Route path="/organizer" element={<ProtectedRoute roles={['ORGANIZER', 'ADMIN']}><OrganizerDashboard /></ProtectedRoute>} />
               <Route path="/admin" element={<ProtectedRoute roles={['ADMIN']}><AdminPage /></ProtectedRoute>} />
             </Routes>

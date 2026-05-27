@@ -68,3 +68,21 @@ export async function deleteEvent(eventId: string) {
     auth: true,
   })
 }
+
+// TODO: Backend endpoint needed: POST /events/:id/staff/invitations
+// Request: { email: string, role: 'JUDGE' | 'MENTOR' }
+// Response: { invitationLink: string, expiresAt: string }
+export async function generateStaffInvitationLink(
+  eventId: string,
+  input: { email: string; role: 'JUDGE' | 'MENTOR' }
+) {
+  const response = await apiRequest<{ invitationLink: string; expiresAt: string }>(
+    `/events/${eventId}/staff/invitations`,
+    {
+      method: 'POST',
+      auth: true,
+      body: JSON.stringify(input),
+    }
+  )
+  return response.data
+}

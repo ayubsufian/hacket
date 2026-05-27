@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck, ImageIcon, X, UserPlus, Copy, Check, Mail } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { listEvents, createEvent, deleteEvent } from '../api/events'
+import { listEvents, createEvent, deleteEvent, generateStaffInvitationLink } from '../api/events'
 import { normalizeScores } from '../api/judging'
 import { exportAnalyticsReport } from '../api/analytics'
 import { useAuth } from '../contexts/AuthContext'
@@ -24,6 +24,8 @@ export default function OrganizerDashboard() {
     const [inviteEventId, setInviteEventId] = useState<string | null>(null)
     const [inviteForm, setInviteForm] = useState({ email: '', role: 'JUDGE' as 'JUDGE' | 'MENTOR' })
     const [generatedLink, setGeneratedLink] = useState('')
+    const [generatingLink, setGeneratingLink] = useState(false)
+    const [inviteError, setInviteError] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
 
     const load = async () => {
@@ -95,11 +97,22 @@ export default function OrganizerDashboard() {
         } finally { setCreating(false) }
     }
 
-    const generateInviteLink = (eventId: string) => {
+    const generateInviteLink = async (eventId: string) => {
         if (!inviteForm.email.trim()) return
-        const payload = btoa(JSON.stringify({ email: inviteForm.email.trim(), role: inviteForm.role, eventId, iat: Date.now() }))
-        const base = window.location.origin
-        setGeneratedLink(`${base}/staff/accept-invitation?token=${encodeURIComponent(payload)}&eventId=${encodeURIComponent(eventId)}`)
+        try {
+            setGeneratingLink(true)
+            setInviteError(null)
+            // Call backend to generate secure invitation link
+            const result = await generateStaffInvitationLink(eventId, {
+                email: inviteForm.email.trim(),
+                role: inviteForm.role
+            })
+            setGeneratedLink(result.invitationLink)
+        } catch (err: any) {
+            setInviteError(err.message || 'Failed to generate invitation link. Backend endpoint may not be implemented yet.')
+        } finally {
+            setGeneratingLink(false)
+        }
     }
 
     const copyLink = async () => {
@@ -112,6 +125,7 @@ export default function OrganizerDashboard() {
     const openInvitePanel = (eventId: string) => {
         setInviteEventId(inviteEventId === eventId ? null : eventId)
         setGeneratedLink('')
+        setInviteError(null)
         setInviteForm({ email: '', role: 'JUDGE' })
     }
 
@@ -334,13 +348,19 @@ export default function OrganizerDashboard() {
                                         </select>
                                         <button
                                             type="button"
-                                            onClick={() => generateInviteLink(ev.id)}
-                                            disabled={!inviteForm.email.trim()}
-                                            className="h-9 px-4 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold disabled:opacity-40 transition-colors shrink-0"
+                                            onClick={() => void generateInviteLink(ev.id)}
+                                            disabled={!inviteForm.email.trim() || generatingLink}
+                                            className="h-9 px-4 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold disabled:opacity-40 transition-colors shrink-0 flex items-center gap-1.5"
                                         >
-                                            Generate
+                                            {generatingLink ? <><Loader2 size={12} className="animate-spin" /> Generating...</> : 'Generate'}
                                         </button>
                                     </div>
+
+                                    {inviteError && (
+                                        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+                                            {inviteError}
+                                        </div>
+                                    )}
 
                                     {generatedLink && (
                                         <div className="rounded-lg border border-violet-200 bg-white overflow-hidden">
