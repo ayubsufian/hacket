@@ -14,17 +14,20 @@ async function checkDelegatedPermission(userId, eventId, targetRole = null) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (user.role === 'ADMIN') return true;
 
-  const hackathon = await prisma.hackathon.findUnique({ where: { id: eventId } });
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: eventId },
+  });
   if (hackathon.organizerId === userId) return true;
 
   const assignments = await prisma.staffAssignment.findMany({
-    where: { userId, hackathonId: eventId, isActive: true }
+    where: { userId, hackathonId: eventId, isActive: true },
   });
 
-  if (assignments.some(a => a.staffRole === 'CO_ORGANIZER')) return true;
+  if (assignments.some((a) => a.staffRole === 'CO_ORGANIZER')) return true;
 
   if (targetRole) {
-    if (assignments.some(a => a.staffRole === targetRole && a.isLead)) return true;
+    if (assignments.some((a) => a.staffRole === targetRole && a.isLead))
+      return true;
   }
   return false;
 }
@@ -34,14 +37,14 @@ async function checkDelegatedPermission(userId, eventId, targetRole = null) {
 async function getRoleConfig(hackathonId, staffRole) {
   const hackathon = await prisma.hackathon.findUnique({
     where: { id: hackathonId },
-    select: { defaultMinLeads: true, defaultMaxLeads: true }
+    select: { defaultMinLeads: true, defaultMaxLeads: true },
   });
   const config = await prisma.staffRoleConfig.findUnique({
-    where: { hackathonId_staffRole: { hackathonId, staffRole } }
+    where: { hackathonId_staffRole: { hackathonId, staffRole } },
   });
   return {
     minLeads: config?.minLeads ?? hackathon.defaultMinLeads,
-    maxLeads: config?.maxLeads ?? hackathon.defaultMaxLeads
+    maxLeads: config?.maxLeads ?? hackathon.defaultMaxLeads,
   };
 }
 
@@ -49,7 +52,15 @@ async function getRoleConfig(hackathonId, staffRole) {
 
 exports.getStaffRoster = catchAsync(async (req, res) => {
   const { eventId } = req.params;
-  const { staffRole, isActive, search, page = 1, limit = 20, sort = 'createdAt', order = 'desc' } = req.query;
+  const {
+    staffRole,
+    isActive,
+    search,
+    page = 1,
+    limit = 20,
+    sort = 'createdAt',
+    order = 'desc',
+  } = req.query;
 
   const pageNum = parseInt(page, 10);
   const limitNum = parseInt(limit, 10);
@@ -64,8 +75,8 @@ exports.getStaffRoster = catchAsync(async (req, res) => {
       OR: [
         { email: { contains: search, mode: 'insensitive' } },
         { profile: { firstName: { contains: search, mode: 'insensitive' } } },
-        { profile: { lastName: { contains: search, mode: 'insensitive' } } }
-      ]
+        { profile: { lastName: { contains: search, mode: 'insensitive' } } },
+      ],
     };
   }
 
@@ -81,27 +92,37 @@ exports.getStaffRoster = catchAsync(async (req, res) => {
           select: {
             id: true,
             email: true, // TODO: Role-based visibility filtering could hide this in the response layer
-            profile: { select: { firstName: true, lastName: true, avatarUrl: true } }
-          }
-        }
-      }
-    })
+            profile: {
+              select: { firstName: true, lastName: true, avatarUrl: true },
+            },
+          },
+        },
+      },
+    }),
   ]);
 
   // Role-Based Visibility (hide emails if viewer is not an organizer or admin)
   let isOrganizer = req.user.role === 'ADMIN';
   if (!isOrganizer) {
     const viewerAssignment = await prisma.staffAssignment.findFirst({
-      where: { userId: req.user.id, hackathonId: eventId, staffRole: 'CO_ORGANIZER', isActive: true }
+      where: {
+        userId: req.user.id,
+        hackathonId: eventId,
+        staffRole: 'CO_ORGANIZER',
+        isActive: true,
+      },
     });
     if (viewerAssignment) isOrganizer = true;
     else {
-       const hackathon = await prisma.hackathon.findUnique({ where: { id: eventId }, select: { organizerId: true } });
-       if (hackathon?.organizerId === req.user.id) isOrganizer = true;
+      const hackathon = await prisma.hackathon.findUnique({
+        where: { id: eventId },
+        select: { organizerId: true },
+      });
+      if (hackathon?.organizerId === req.user.id) isOrganizer = true;
     }
   }
 
-  const processedRoster = roster.map(assignment => {
+  const processedRoster = roster.map((assignment) => {
     if (!isOrganizer && assignment.userId !== req.user.id) {
       assignment.user.email = undefined; // Hide email from non-organizers
     }
@@ -111,7 +132,12 @@ exports.getStaffRoster = catchAsync(async (req, res) => {
   res.status(200).json({
     success: true,
     data: processedRoster,
-    pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) }
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum),
+    },
   });
 });
 
@@ -125,10 +151,10 @@ exports.getStaffDetail = catchAsync(async (req, res) => {
         select: {
           id: true,
           email: true,
-          profile: true
-        }
-      }
-    }
+          profile: true,
+        },
+      },
+    },
   });
 
   if (!assignment) {
@@ -140,16 +166,32 @@ exports.getStaffDetail = catchAsync(async (req, res) => {
 
 exports.getInvitations = catchAsync(async (req, res) => {
   const { eventId } = req.params;
-  const { status, page = 1, limit = 20, sort = 'createdAt', order = 'desc' } = req.query;
+  const {
+    status,
+    page = 1,
+    limit = 20,
+    sort = 'createdAt',
+    order = 'desc',
+  } = req.query;
 
   // Verify the user is at least a Lead in SOME role, or a co-organizer
   // For safety, we only return invitations for the roles they are a Lead for, UNLESS they are a CO_ORGANIZER.
   const isSuperAdmin = await checkDelegatedPermission(req.user.id, eventId);
-  const assignments = await prisma.staffAssignment.findMany({ where: { userId: req.user.id, hackathonId: eventId, isActive: true, isLead: true } });
-  const leadRoles = assignments.map(a => a.staffRole);
+  const assignments = await prisma.staffAssignment.findMany({
+    where: {
+      userId: req.user.id,
+      hackathonId: eventId,
+      isActive: true,
+      isLead: true,
+    },
+  });
+  const leadRoles = assignments.map((a) => a.staffRole);
 
   if (!isSuperAdmin && leadRoles.length === 0) {
-    throw new AppError('Forbidden. You do not have permission to view invitations.', 403);
+    throw new AppError(
+      'Forbidden. You do not have permission to view invitations.',
+      403,
+    );
   }
 
   const pageNum = parseInt(page, 10);
@@ -166,14 +208,19 @@ exports.getInvitations = catchAsync(async (req, res) => {
       where,
       skip,
       take: limitNum,
-      orderBy: { [sort]: order === 'asc' ? 'asc' : 'desc' }
-    })
+      orderBy: { [sort]: order === 'asc' ? 'asc' : 'desc' },
+    }),
   ]);
 
   res.status(200).json({
     success: true,
     data: invitations,
-    pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) }
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum),
+    },
   });
 });
 
@@ -181,19 +228,33 @@ exports.resendInvitation = catchAsync(async (req, res) => {
   const { eventId, invitationId } = req.params;
 
   const invitation = await prisma.staffInvitation.findFirst({
-    where: { id: invitationId, hackathonId: eventId }
+    where: { id: invitationId, hackathonId: eventId },
   });
 
   if (!invitation) throw new AppError('Invitation not found.', 404);
 
-  const isAuthorized = await checkDelegatedPermission(req.user.id, eventId, invitation.staffRole);
-  if (!isAuthorized) throw new AppError('Forbidden. You do not have permission to manage this invitation.', 403);
+  const isAuthorized = await checkDelegatedPermission(
+    req.user.id,
+    eventId,
+    invitation.staffRole,
+  );
+  if (!isAuthorized)
+    throw new AppError(
+      'Forbidden. You do not have permission to manage this invitation.',
+      403,
+    );
 
   if (invitation.status !== 'PENDING') {
-    throw new AppError(`Cannot resend an invitation that is ${invitation.status}.`, 400);
+    throw new AppError(
+      `Cannot resend an invitation that is ${invitation.status}.`,
+      400,
+    );
   }
 
-  const hackathon = await prisma.hackathon.findUnique({ where: { id: eventId }, select: { title: true } });
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: eventId },
+    select: { title: true },
+  });
 
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date();
@@ -201,7 +262,7 @@ exports.resendInvitation = catchAsync(async (req, res) => {
 
   await prisma.staffInvitation.update({
     where: { id: invitationId },
-    data: { token, expiresAt }
+    data: { token, expiresAt },
   });
 
   eventBus.emit('audit:log', {
@@ -209,7 +270,11 @@ exports.resendInvitation = catchAsync(async (req, res) => {
     action: 'STAFF_INVITATION_RESENT',
     entity: 'staffInvitation',
     entityId: invitation.id,
-    details: { eventId, email: invitation.email, staffRole: invitation.staffRole }
+    details: {
+      eventId,
+      email: invitation.email,
+      staffRole: invitation.staffRole,
+    },
   });
 
   eventBus.emit('email:staff_invitation_resend', {
@@ -219,30 +284,46 @@ exports.resendInvitation = catchAsync(async (req, res) => {
     hackathonTitle: hackathon.title,
   });
 
-  res.status(200).json({ success: true, message: 'Invitation resent successfully.' });
+  res
+    .status(200)
+    .json({ success: true, message: 'Invitation resent successfully.' });
 });
 
 exports.cancelInvitation = catchAsync(async (req, res) => {
   const { eventId, invitationId } = req.params;
 
   const invitation = await prisma.staffInvitation.findFirst({
-    where: { id: invitationId, hackathonId: eventId }
+    where: { id: invitationId, hackathonId: eventId },
   });
 
   if (!invitation) throw new AppError('Invitation not found.', 404);
 
-  const isAuthorized = await checkDelegatedPermission(req.user.id, eventId, invitation.staffRole);
-  if (!isAuthorized) throw new AppError('Forbidden. You do not have permission to manage this invitation.', 403);
+  const isAuthorized = await checkDelegatedPermission(
+    req.user.id,
+    eventId,
+    invitation.staffRole,
+  );
+  if (!isAuthorized)
+    throw new AppError(
+      'Forbidden. You do not have permission to manage this invitation.',
+      403,
+    );
 
   if (invitation.status !== 'PENDING') {
-    throw new AppError(`Cannot cancel an invitation that is ${invitation.status}.`, 400);
+    throw new AppError(
+      `Cannot cancel an invitation that is ${invitation.status}.`,
+      400,
+    );
   }
 
-  const hackathon = await prisma.hackathon.findUnique({ where: { id: eventId }, select: { title: true } });
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: eventId },
+    select: { title: true },
+  });
 
   await prisma.staffInvitation.update({
     where: { id: invitationId },
-    data: { status: 'EXPIRED' }
+    data: { status: 'EXPIRED' },
   });
 
   eventBus.emit('audit:log', {
@@ -250,16 +331,18 @@ exports.cancelInvitation = catchAsync(async (req, res) => {
     action: 'STAFF_INVITATION_CANCELLED',
     entity: 'staffInvitation',
     entityId: invitation.id,
-    details: { eventId, email: invitation.email }
+    details: { eventId, email: invitation.email },
   });
 
   eventBus.emit('email:staff_invitation_cancelled', {
     email: invitation.email,
     hackathonTitle: hackathon.title,
-    staffRole: invitation.staffRole
+    staffRole: invitation.staffRole,
   });
 
-  res.status(200).json({ success: true, message: 'Invitation cancelled successfully.' });
+  res
+    .status(200)
+    .json({ success: true, message: 'Invitation cancelled successfully.' });
 });
 
 exports.leaveStaff = catchAsync(async (req, res) => {
@@ -267,50 +350,68 @@ exports.leaveStaff = catchAsync(async (req, res) => {
   const { staffRole } = req.body; // In case they have multiple roles and want to leave a specific one, but if not provided we leave all
 
   const assignments = await prisma.staffAssignment.findMany({
-    where: { 
-      userId: req.user.id, 
-      hackathonId: eventId, 
+    where: {
+      userId: req.user.id,
+      hackathonId: eventId,
       isActive: true,
-      ...(staffRole && { staffRole })
-    }
+      ...(staffRole && { staffRole }),
+    },
   });
 
-  if (assignments.length === 0) throw new AppError('Active staff assignment not found.', 404);
+  if (assignments.length === 0)
+    throw new AppError('Active staff assignment not found.', 404);
 
   // Check minLeads logic for each role they are a lead in
   for (const assignment of assignments) {
     if (assignment.isLead) {
       const { minLeads } = await getRoleConfig(eventId, assignment.staffRole);
       const activeLeadsCount = await prisma.staffAssignment.count({
-        where: { hackathonId: eventId, staffRole: assignment.staffRole, isLead: true, isActive: true }
+        where: {
+          hackathonId: eventId,
+          staffRole: assignment.staffRole,
+          isLead: true,
+          isActive: true,
+        },
       });
 
       if (activeLeadsCount - 1 < minLeads) {
-        throw new AppError(`Cannot leave. This would drop the number of leads for ${assignment.staffRole} below the required minimum of ${minLeads}. Appoint a successor first.`, 403);
+        throw new AppError(
+          `Cannot leave. This would drop the number of leads for ${assignment.staffRole} below the required minimum of ${minLeads}. Appoint a successor first.`,
+          403,
+        );
       }
     }
   }
 
   await prisma.staffAssignment.updateMany({
-    where: { id: { in: assignments.map(a => a.id) } },
-    data: { isActive: false, revokedAt: new Date(), revokedBy: req.user.id }
+    where: { id: { in: assignments.map((a) => a.id) } },
+    data: { isActive: false, revokedAt: new Date(), revokedBy: req.user.id },
   });
 
-  assignments.forEach(assignment => {
+  assignments.forEach((assignment) => {
     eventBus.emit('audit:log', {
       actorId: req.user.id,
       action: 'STAFF_LEFT',
       entity: 'staffAssignment',
       entityId: assignment.id,
-      details: { eventId, staffRole: assignment.staffRole }
+      details: { eventId, staffRole: assignment.staffRole },
     });
   });
 
-  res.status(200).json({ success: true, message: 'You have successfully left the staff roster.' });
+  res.status(200).json({
+    success: true,
+    message: 'You have successfully left the staff roster.',
+  });
 });
 
 exports.getMyAssignments = catchAsync(async (req, res) => {
-  const { isActive, page = 1, limit = 20, sort = 'createdAt', order = 'desc' } = req.query;
+  const {
+    isActive,
+    page = 1,
+    limit = 20,
+    sort = 'createdAt',
+    order = 'desc',
+  } = req.query;
 
   const pageNum = parseInt(page, 10);
   const limitNum = parseInt(limit, 10);
@@ -326,14 +427,21 @@ exports.getMyAssignments = catchAsync(async (req, res) => {
       skip,
       take: limitNum,
       orderBy: { [sort]: order === 'asc' ? 'asc' : 'desc' },
-      include: { hackathon: { select: { id: true, title: true, status: true } } }
-    })
+      include: {
+        hackathon: { select: { id: true, title: true, status: true } },
+      },
+    }),
   ]);
 
   res.status(200).json({
     success: true,
     data: assignments,
-    pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) }
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum),
+    },
   });
 });
 
@@ -343,11 +451,12 @@ exports.inviteStaff = catchAsync(async (req, res) => {
   const { eventId } = req.params;
   const { email, staffRole, message } = req.body;
 
-  if (!email || !staffRole) throw new AppError('Email and StaffRole are required.', 400);
+  if (!email || !staffRole)
+    throw new AppError('Email and StaffRole are required.', 400);
 
   const hackathon = await prisma.hackathon.findUnique({
     where: { id: eventId },
-    select: { title: true }
+    select: { title: true },
   });
 
   if (!hackathon) throw new AppError('Hackathon not found.', 404);
@@ -355,16 +464,35 @@ exports.inviteStaff = catchAsync(async (req, res) => {
   // Check for Duplicate
   const targetUser = await prisma.user.findUnique({ where: { email } });
   if (targetUser) {
-      const existingAssignment = await prisma.staffAssignment.findFirst({
-          where: { userId: targetUser.id, hackathonId: eventId, staffRole, isActive: true }
-      });
-      if (existingAssignment) throw new AppError('User already has an active assignment for this role.', 409);
+    const existingAssignment = await prisma.staffAssignment.findFirst({
+      where: {
+        userId: targetUser.id,
+        hackathonId: eventId,
+        staffRole,
+        isActive: true,
+      },
+    });
+    if (existingAssignment)
+      throw new AppError(
+        'User already has an active assignment for this role.',
+        409,
+      );
   }
 
   const existingInvitation = await prisma.staffInvitation.findFirst({
-      where: { hackathonId: eventId, email, staffRole, status: 'PENDING', expiresAt: { gt: new Date() } }
+    where: {
+      hackathonId: eventId,
+      email,
+      staffRole,
+      status: 'PENDING',
+      expiresAt: { gt: new Date() },
+    },
   });
-  if (existingInvitation) throw new AppError('A pending invitation already exists for this role and email.', 409);
+  if (existingInvitation)
+    throw new AppError(
+      'A pending invitation already exists for this role and email.',
+      409,
+    );
 
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date();
@@ -390,14 +518,19 @@ exports.inviteStaff = catchAsync(async (req, res) => {
     details: { eventId, email, staffRole },
   });
 
+  // Generate the full invitation URL using environment variable or fallback
+  const baseUrl = process.env.FRONTEND_URL || 'https://domain.com';
+  const invitationUrl = `${baseUrl}/staff/accept-invitation?token=${token}`;
+
   eventBus.emit('email:staff_invitation', {
     email,
     token,
     staffRole,
     hackathonTitle: hackathon.title,
+    invitationUrl,
   });
 
-  const responseData = {};
+  const responseData = { invitationUrl };
   if (req.query.debug === 'true') responseData.token = token;
 
   res.status(201).json({
@@ -413,39 +546,54 @@ exports.acceptInvitationGlobal = catchAsync(async (req, res) => {
   if (!token) throw new AppError('Invitation token is required.', 400);
 
   const invitation = await prisma.staffInvitation.findUnique({
-    where: { token }
+    where: { token },
   });
 
-  if (!invitation || invitation.expiresAt <= new Date() || invitation.status !== 'PENDING') {
-    throw new AppError('Invalid, expired, or already accepted invitation token.', 400);
+  if (
+    !invitation ||
+    invitation.expiresAt <= new Date() ||
+    invitation.status !== 'PENDING'
+  ) {
+    throw new AppError(
+      'Invalid, expired, or already accepted invitation token.',
+      400,
+    );
   }
 
-  const accountExists = !!(await prisma.user.findUnique({ where: { email: invitation.email } }));
+  const accountExists = !!(await prisma.user.findUnique({
+    where: { email: invitation.email },
+  }));
 
   if (!req.user) {
-      return res.status(200).json({
-          success: true,
-          status: 'valid',
-          email: invitation.email,
-          hackathonId: invitation.hackathonId,
-          staffRole: invitation.staffRole,
-          accountExists
-      });
+    return res.status(200).json({
+      success: true,
+      status: 'valid',
+      email: invitation.email,
+      hackathonId: invitation.hackathonId,
+      staffRole: invitation.staffRole,
+      accountExists,
+    });
   }
 
   if (req.user.email !== invitation.email) {
-    throw new AppError('This invitation belongs to a different email address. Please log in with the correct account.', 403);
+    throw new AppError(
+      'This invitation belongs to a different email address. Please log in with the correct account.',
+      403,
+    );
   }
 
   const isCompeting = await prisma.teamMember.findFirst({
     where: {
       userId: req.user.id,
-      team: { hackathonId: invitation.hackathonId }
-    }
+      team: { hackathonId: invitation.hackathonId },
+    },
   });
 
   if (isCompeting) {
-    throw new AppError('Conflict of Interest: You cannot accept a staff position for a hackathon you are already competing in. Please withdraw from your team first.', 409);
+    throw new AppError(
+      'Conflict of Interest: You cannot accept a staff position for a hackathon you are already competing in. Please withdraw from your team first.',
+      409,
+    );
   }
 
   const existingAssignment = await prisma.staffAssignment.findUnique({
@@ -453,9 +601,9 @@ exports.acceptInvitationGlobal = catchAsync(async (req, res) => {
       userId_hackathonId_staffRole: {
         userId: req.user.id,
         hackathonId: invitation.hackathonId,
-        staffRole: invitation.staffRole
-      }
-    }
+        staffRole: invitation.staffRole,
+      },
+    },
   });
 
   await prisma.$transaction(async (tx) => {
@@ -465,26 +613,33 @@ exports.acceptInvitationGlobal = catchAsync(async (req, res) => {
           userId: req.user.id,
           hackathonId: invitation.hackathonId,
           staffRole: invitation.staffRole,
-        }
+        },
       });
     } else if (!existingAssignment.isActive) {
       await tx.staffAssignment.update({
-          where: { id: existingAssignment.id },
-          data: { isActive: true, revokedAt: null, revokedBy: null }
+        where: { id: existingAssignment.id },
+        data: { isActive: true, revokedAt: null, revokedBy: null },
       });
     }
 
     await tx.staffInvitation.update({
       where: { id: invitation.id },
-      data: { status: 'ACCEPTED', acceptedAt: new Date(), acceptedBy: req.user.id }
+      data: {
+        status: 'ACCEPTED',
+        acceptedAt: new Date(),
+        acceptedBy: req.user.id,
+      },
     });
-    
+
     if (req.user.verificationStatus === 'UNVERIFIED') {
       await tx.user.update({
         where: { id: req.user.id },
-        data: { verificationStatus: 'VERIFIED' }
+        data: { verificationStatus: 'VERIFIED' },
       });
-      eventBus.emit('email:account_verified', { userId: req.user.id, email: req.user.email });
+      eventBus.emit('email:account_verified', {
+        userId: req.user.id,
+        email: req.user.email,
+      });
     }
   });
 
@@ -493,7 +648,10 @@ exports.acceptInvitationGlobal = catchAsync(async (req, res) => {
     action: 'STAFF_INVITATION_ACCEPTED',
     entity: 'staffAssignment',
     entityId: req.user.id,
-    details: { eventId: invitation.hackathonId, staffRole: invitation.staffRole }
+    details: {
+      eventId: invitation.hackathonId,
+      staffRole: invitation.staffRole,
+    },
   });
 
   if (invitation.staffRole === 'JUDGE') {
@@ -515,57 +673,91 @@ exports.updateStaff = catchAsync(async (req, res) => {
 
   const assignment = await prisma.staffAssignment.findUnique({
     where: { id },
-    include: { hackathon: true }
+    include: { hackathon: true },
   });
 
   if (!assignment) throw new AppError('Staff assignment not found.', 404);
 
   const isSelf = assignment.userId === req.user.id;
-  const isAuthorized = await checkDelegatedPermission(req.user.id, assignment.hackathonId, assignment.staffRole);
+  const isAuthorized = await checkDelegatedPermission(
+    req.user.id,
+    assignment.hackathonId,
+    assignment.staffRole,
+  );
   const isPrimaryOrganizer = assignment.hackathon.organizerId === req.user.id;
 
   // Modifying someone else (or upgrading oneself)
   if (!isSelf && !isAuthorized) {
-    throw new AppError('You do not have permission to modify staff assignments.', 403);
+    throw new AppError(
+      'You do not have permission to modify staff assignments.',
+      403,
+    );
   }
 
-  const { minLeads, maxLeads } = await getRoleConfig(assignment.hackathonId, assignment.staffRole);
+  const { minLeads, maxLeads } = await getRoleConfig(
+    assignment.hackathonId,
+    assignment.staffRole,
+  );
 
   const activeLeadsCount = await prisma.staffAssignment.count({
-    where: { hackathonId: assignment.hackathonId, staffRole: assignment.staffRole, isLead: true, isActive: true }
+    where: {
+      hackathonId: assignment.hackathonId,
+      staffRole: assignment.staffRole,
+      isLead: true,
+      isActive: true,
+    },
   });
 
   const totalMembersCount = await prisma.staffAssignment.count({
-    where: { hackathonId: assignment.hackathonId, staffRole: assignment.staffRole, isActive: true }
+    where: {
+      hackathonId: assignment.hackathonId,
+      staffRole: assignment.staffRole,
+      isActive: true,
+    },
   });
 
   // Self-Leave check
   if (typeof isActive === 'boolean' && !isActive) {
-      if (assignment.isLead) {
-          if (activeLeadsCount - 1 < minLeads && !isPrimaryOrganizer) {
-              throw new AppError(`Cannot deactivate. This would drop the number of leads below the required minimum of ${minLeads}. Appoint a successor first.`, 403);
-          }
+    if (assignment.isLead) {
+      if (activeLeadsCount - 1 < minLeads && !isPrimaryOrganizer) {
+        throw new AppError(
+          `Cannot deactivate. This would drop the number of leads below the required minimum of ${minLeads}. Appoint a successor first.`,
+          403,
+        );
       }
+    }
   }
 
   // Modifying isLead
   if (isLead !== undefined && isLead !== assignment.isLead) {
-      if (!isAuthorized) {
-          throw new AppError('Only the primary organizer or an existing lead can grant/revoke isLead.', 403);
+    if (!isAuthorized) {
+      throw new AppError(
+        'Only the primary organizer or an existing lead can grant/revoke isLead.',
+        403,
+      );
+    }
+
+    if (isLead === true) {
+      if (activeLeadsCount + 1 > maxLeads) {
+        throw new AppError(
+          `Cannot grant Lead status. Maximum leads (${maxLeads}) reached for this role.`,
+          403,
+        );
       }
-      
-      if (isLead === true) {
-         if (activeLeadsCount + 1 > maxLeads) {
-            throw new AppError(`Cannot grant Lead status. Maximum leads (${maxLeads}) reached for this role.`, 403);
-         }
-         if (activeLeadsCount + 1 > totalMembersCount) {
-            throw new AppError(`Cannot grant Lead status. Leads cannot exceed total active members in this role.`, 403);
-         }
-      } else if (isLead === false) {
-         if (activeLeadsCount - 1 < minLeads && !isPrimaryOrganizer) {
-            throw new AppError(`Cannot remove Lead status. This would drop the number of leads below the required minimum of ${minLeads}.`, 403);
-         }
+      if (activeLeadsCount + 1 > totalMembersCount) {
+        throw new AppError(
+          `Cannot grant Lead status. Leads cannot exceed total active members in this role.`,
+          403,
+        );
       }
+    } else if (isLead === false) {
+      if (activeLeadsCount - 1 < minLeads && !isPrimaryOrganizer) {
+        throw new AppError(
+          `Cannot remove Lead status. This would drop the number of leads below the required minimum of ${minLeads}.`,
+          403,
+        );
+      }
+    }
   }
 
   const updated = await prisma.staffAssignment.update({
@@ -573,16 +765,18 @@ exports.updateStaff = catchAsync(async (req, res) => {
     data: {
       ...(staffRole && { staffRole }),
       ...(isLead !== undefined && { isLead }),
-      ...(typeof isActive === 'boolean' && { 
+      ...(typeof isActive === 'boolean' && {
         isActive,
         revokedAt: isActive ? null : new Date(),
-        revokedBy: isActive ? null : req.user.id
+        revokedBy: isActive ? null : req.user.id,
       }),
     },
     include: {
-      user: { select: { email: true, profile: { select: { firstName: true } } } },
-      hackathon: { select: { title: true } }
-    }
+      user: {
+        select: { email: true, profile: { select: { firstName: true } } },
+      },
+      hackathon: { select: { title: true } },
+    },
   });
 
   if (
@@ -603,13 +797,13 @@ exports.updateStaff = catchAsync(async (req, res) => {
   });
 
   if (isLead !== undefined && isLead !== assignment.isLead) {
-      eventBus.emit('audit:log', {
-        actorId: req.user.id,
-        action: 'STAFF_LEAD_CHANGED',
-        entity: 'staffAssignment',
-        entityId: id,
-        details: { isLead, staffRole: assignment.staffRole }
-      });
+    eventBus.emit('audit:log', {
+      actorId: req.user.id,
+      action: 'STAFF_LEAD_CHANGED',
+      entity: 'staffAssignment',
+      entityId: id,
+      details: { isLead, staffRole: assignment.staffRole },
+    });
   }
 
   const notificationService = require('../services/notifications/notification.service');
@@ -623,7 +817,11 @@ exports.updateStaff = catchAsync(async (req, res) => {
       type: 'SYSTEM_ALERT',
       title,
       message,
-      metadata: { hackathonId: assignment.hackathonId, oldRole: assignment.staffRole, newRole: staffRole }
+      metadata: {
+        hackathonId: assignment.hackathonId,
+        oldRole: assignment.staffRole,
+        newRole: staffRole,
+      },
     });
 
     eventBus.emit('email:staff_role_changed', {
@@ -631,7 +829,7 @@ exports.updateStaff = catchAsync(async (req, res) => {
       firstName: updated.user.profile?.firstName,
       hackathonTitle: updated.hackathon.title,
       oldRole: assignment.staffRole,
-      newRole: staffRole
+      newRole: staffRole,
     });
   }
 
@@ -644,14 +842,17 @@ exports.updateStaff = catchAsync(async (req, res) => {
       type: 'SYSTEM_ALERT',
       title,
       message,
-      metadata: { hackathonId: assignment.hackathonId, revokedRole: assignment.staffRole }
+      metadata: {
+        hackathonId: assignment.hackathonId,
+        revokedRole: assignment.staffRole,
+      },
     });
 
     eventBus.emit('email:staff_access_revoked', {
       email: updated.user.email,
       firstName: updated.user.profile?.firstName,
       hackathonTitle: updated.hackathon.title,
-      role: assignment.staffRole
+      role: assignment.staffRole,
     });
   }
 
