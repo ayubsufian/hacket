@@ -4,6 +4,6 @@
   "workspaces": [
     "frontend",
     "apps/*",
-    "packages/*"
+    "packages/database"
   ]
 }

@@ -1,0 +1,103 @@
+-- Team invitation/request lifecycle
+DO $$
+BEGIN
+  CREATE TYPE "TeamInvitationType" AS ENUM ('INVITATION', 'REQUEST');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE "team_invitations"
+  ADD COLUMN IF NOT EXISTS "type" "TeamInvitationType" NOT NULL DEFAULT 'INVITATION';
+
+ALTER TABLE "teams"
+  ADD COLUMN IF NOT EXISTS "is_auto_created_solo" BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS "team_invitations_team_id_status_type_idx"
+  ON "team_invitations"("team_id", "status", "type");
+
+-- Submission ranking fields used by judging normalization and analytics.
+ALTER TABLE "submissions"
+  ADD COLUMN IF NOT EXISTS "final_score" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "rank" INTEGER;
+
+CREATE INDEX IF NOT EXISTS "submissions_hackathon_id_rank_idx"
+  ON "submissions"("hackathon_id", "rank");
+
+-- Mentorship session scheduling.
+DO $$
+BEGIN
+  CREATE TYPE "MentorSessionStatus" AS ENUM ('SCHEDULED', 'CANCELLED', 'COMPLETED', 'NO_SHOW');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "mentor_sessions" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "mentor_id" UUID NOT NULL,
+  "requester_id" UUID NOT NULL,
+  "team_id" UUID NOT NULL,
+  "hackathon_id" UUID NOT NULL,
+  "mentor_assignment_id" UUID,
+  "start_at" TIMESTAMP(3) NOT NULL,
+  "end_at" TIMESTAMP(3) NOT NULL,
+  "duration_minutes" INTEGER NOT NULL,
+  "agenda" TEXT,
+  "status" "MentorSessionStatus" NOT NULL DEFAULT 'SCHEDULED',
+  "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "mentor_sessions_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "mentor_sessions_mentor_id_fkey" FOREIGN KEY ("mentor_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "mentor_sessions_requester_id_fkey" FOREIGN KEY ("requester_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "mentor_sessions_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "teams"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "mentor_sessions_hackathon_id_fkey" FOREIGN KEY ("hackathon_id") REFERENCES "hackathons"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "mentor_sessions_mentor_assignment_id_fkey" FOREIGN KEY ("mentor_assignment_id") REFERENCES "mentor_assignments"("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "mentor_sessions_mentor_id_start_at_idx"
+  ON "mentor_sessions"("mentor_id", "start_at");
+CREATE INDEX IF NOT EXISTS "mentor_sessions_requester_id_start_at_idx"
+  ON "mentor_sessions"("requester_id", "start_at");
+CREATE INDEX IF NOT EXISTS "mentor_sessions_team_id_start_at_idx"
+  ON "mentor_sessions"("team_id", "start_at");
+CREATE INDEX IF NOT EXISTS "mentor_sessions_hackathon_id_start_at_idx"
+  ON "mentor_sessions"("hackathon_id", "start_at");
+
+-- Audit event vocabulary for team, submission, mentorship, and judging mutations.
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'USER_UNSUSPENDED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'ORGANIZER_APPROVED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'ORGANIZER_REJECTED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'EXTEND_SESSION';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'SUBMIT_VERIFICATION';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'ROLE_UPGRADE_REQUESTED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'STAFF_INVITATION_RESENT';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'STAFF_INVITATION_CANCELLED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'STAFF_LEFT';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'STAFF_ROLE_CONFIG_UPDATED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'STAFF_INVITATION_ACCEPTED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'STAFF_LEAD_CHANGED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_CREATED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_UPDATED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_INVITED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_INVITATION_CANCELLED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_INVITATION_RESPONDED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_JOIN_REQUESTED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_MEMBER_JOINED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_MEMBER_LEFT';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_MEMBER_KICKED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_LEADERSHIP_TRANSFERRED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_DISBANDED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'TEAM_AUTO_MATCHED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'SUBMISSION_CREATED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'SUBMISSION_UPDATED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'SUBMISSION_SUBMITTED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'SUBMISSION_WITHDRAWN';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'MENTORSHIP_REQUEST_CREATED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'MENTORSHIP_REQUEST_CANCELLED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'MENTORSHIP_REQUEST_RESPONDED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'MENTORSHIP_INTERACTION_LOGGED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'MENTORSHIP_ASSIGNMENT_DEACTIVATED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'MENTORSHIP_SESSION_SCHEDULED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'JUDGING_CRITERIA_CREATED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'JUDGING_CRITERIA_UPDATED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'JUDGING_CRITERIA_DELETED';
+ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'JUDGING_ASSIGNMENT_DELETED';

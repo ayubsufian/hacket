@@ -17,4 +17,12 @@ router.get('/', notificationsController.getNotifications);
 router.patch('/:id/read', notificationsController.markAsRead);
 router.patch('/read-all', notificationsController.markAllAsRead);
 
+// Sponsor/Communications triggers broadcast announcements
+const authorizeEventStaff = require('../middleware/authorizeEventStaff');
+router.post(
+  '/broadcast/:eventId',
+  authorizeEventStaff('CO_ORGANIZER', 'COMMUNICATIONS'),
+  notificationsController.createBroadcast
+);
+
 module.exports = router;

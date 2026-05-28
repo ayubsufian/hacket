@@ -76,7 +76,7 @@ const errorHandler = (err, req, res, next) => {
     status = 'fail';
     message =
       err.code === 'LIMIT_FILE_SIZE'
-        ? 'File is too large. Maximum size is 10 MB.'
+        ? 'File is too large. Maximum size is 100 MB.'
         : `Upload error: ${err.message}`;
   }
 
@@ -110,6 +110,10 @@ const errorHandler = (err, req, res, next) => {
 
   if (details) {
     response.details = details;
+  }
+
+  if (err.data) {
+    response.data = err.data;
   }
 
   // Include stack trace in development only

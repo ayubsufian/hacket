@@ -1,22 +1,17 @@
 // =============================================================================
-// HackET — Teams Routes
-// POST /api/v1/teams                       — Create team
-// GET  /api/v1/teams/:id                   — Get team details
-// PUT  /api/v1/teams/:id                   — Update team (leader)
-// POST /api/v1/teams/:id/invite            — Send invitation
-// POST /api/v1/teams/invitations/:id/respond — Accept/decline invite
-// POST /api/v1/teams/:id/leave             — Leave team
+// HackET - Teams Routes
 // =============================================================================
 
 const { Router } = require('express');
 const Joi = require('joi');
 const teamsController = require('../controllers/teams.controller');
 const authenticate = require('../middleware/auth');
+const ensureVerified = require('../middleware/ensureVerified');
+const ensureProfileComplete = require('../middleware/ensureProfileComplete');
 const validate = require('../middleware/validate');
+const { invitationLimiter } = require('../middleware/rateLimiter');
 
 const router = Router();
-
-// ── Validation Schemas ──────────────────────────────────────────────────
 
 const createSchema = Joi.object({
   hackathonId: Joi.string().uuid().required(),
@@ -37,23 +32,56 @@ const inviteSchema = Joi.object({
   message: Joi.string().max(500).allow(null, ''),
 });
 
+const requestSchema = Joi.object({
+  message: Joi.string().max(500).allow(null, ''),
+});
+
 const respondSchema = Joi.object({
   accept: Joi.boolean().required(),
 });
 
-// ── Routes ──────────────────────────────────────────────────────────────
+const transferLeadershipSchema = Joi.object({
+  newLeaderUserId: Joi.string().uuid().required(),
+});
 
-router.use(authenticate); // All team routes require auth
+router.use(authenticate);
 
-router.post('/', validate(createSchema), teamsController.create);
-router.get('/:id', teamsController.getById);
-router.put('/:id', validate(updateSchema), teamsController.update);
-router.post('/:id/invite', validate(inviteSchema), teamsController.sendInvitation);
+router.get('/invitations', teamsController.listUserInvitations);
+router.post('/invitations/:id/respond', validate(respondSchema), teamsController.respondToInvitation);
+
+router.get('/', teamsController.list);
+router.post('/', ensureVerified, ensureProfileComplete, validate(createSchema), teamsController.create);
+
+router.get('/:id/invitations', teamsController.listTeamInvitations);
+router.delete('/:id/invitations/:invitationId', teamsController.cancelInvitation);
+
 router.post(
-  '/invitations/:id/respond',
-  validate(respondSchema),
-  teamsController.respondToInvitation
+  '/:id/invite',
+  ensureVerified,
+  ensureProfileComplete,
+  invitationLimiter,
+  validate(inviteSchema),
+  teamsController.sendInvitation
 );
+
+router.post(
+  '/:id/request',
+  ensureVerified,
+  ensureProfileComplete,
+  validate(requestSchema),
+  teamsController.requestToJoin
+);
+
+router.post(
+  '/:id/transfer-leadership',
+  validate(transferLeadershipSchema),
+  teamsController.transferLeadership
+);
+
+router.delete('/:id/members/:userId', teamsController.kickMember);
 router.post('/:id/leave', teamsController.leave);
+router.put('/:id', validate(updateSchema), teamsController.update);
+router.get('/:id', teamsController.getById);
+router.delete('/:id', teamsController.disband);
 
 module.exports = router;

@@ -1,0 +1,8 @@
+ALTER TYPE "RegistrationStatus" ADD VALUE IF NOT EXISTS 'WAITLISTED';
+
+ALTER TABLE "hackathons"
+ADD COLUMN IF NOT EXISTS "waitlist_enabled" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN IF NOT EXISTS "waitlist_limit" INTEGER;
+
+ALTER TABLE "registrations"
+ADD COLUMN IF NOT EXISTS "waitlist_position" INTEGER;

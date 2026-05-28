@@ -27,6 +27,7 @@ class AnalyticsService {
       submissionsByStatus,
       topTeams,
       skillDistribution,
+      judgeMetrics,
     ] = await Promise.all([
       prisma.team.count({ where: { hackathonId } }),
       prisma.teamMember.count({ where: { team: { hackathonId } } }),
@@ -48,6 +49,7 @@ class AnalyticsService {
         },
       }),
       this._getSkillDistribution(hackathonId),
+      this._getJudgePerformanceMetrics(hackathonId),
     ]);
 
     return {
@@ -68,6 +70,7 @@ class AnalyticsService {
         finalScore: t.finalScore,
       })),
       skillDistribution,
+      judgeMetrics,
     };
   }
 
@@ -216,6 +219,30 @@ class AnalyticsService {
     return Object.entries(skillCounts)
       .map(([skill, count]) => ({ skill, count }))
       .sort((a, b) => b.count - a.count);
+  }
+
+  async _getJudgePerformanceMetrics(hackathonId) {
+    const metrics = await prisma.score.groupBy({
+      by: ['judgeId'],
+      where: { submission: { hackathonId } },
+      _count: { id: true },
+      _avg: { value: true },
+    });
+
+    const judges = await prisma.user.findMany({
+      where: { id: { in: metrics.map(m => m.judgeId) } },
+      select: { id: true, email: true }
+    });
+
+    return metrics.map(m => {
+      const judge = judges.find(j => j.id === m.judgeId);
+      return {
+        judgeId: m.judgeId,
+        judgeEmail: judge ? judge.email : 'Unknown',
+        scoresSubmitted: m._count.id,
+        averageScore: m._avg.value ? parseFloat(m._avg.value.toFixed(2)) : 0,
+      };
+    });
   }
 }
 

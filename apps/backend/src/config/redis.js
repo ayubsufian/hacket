@@ -68,7 +68,7 @@ async function disconnectRedis() {
 
 /**
  * Create or refresh a user session in Redis.
- * @param {string} userId
+ * @param {string} token
  * @param {object} sessionData - Arbitrary session payload (role, etc.)
  */
 async function setSession(userId, sessionData) {
@@ -87,7 +87,7 @@ async function setSession(userId, sessionData) {
 /**
  * Retrieve and refresh a session (sliding window).
  * Returns null if session expired or doesn't exist.
- * @param {string} userId
+ * @param {string} token
  * @returns {object|null}
  */
 async function getSession(userId) {
@@ -113,7 +113,7 @@ async function getSession(userId) {
 
 /**
  * Destroy a user session.
- * @param {string} userId
+ * @param {string} token
  */
 async function destroySession(userId) {
   const key = `session:${userId}`;
@@ -132,4 +132,5 @@ module.exports = {
   getSession,
   destroySession,
   SESSION_TTL_SECONDS,
+  // PARTICIPANT_TTL_SECONDS,
 };

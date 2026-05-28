@@ -21,19 +21,58 @@ class LeaderboardService {
   async getLeaderboard(hackathonId, { page = 1, limit = 25 } = {}) {
     const offset = (page - 1) * limit;
 
+    // AF1: Check visibility restrictions
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: { scoreboardReleaseAt: true, status: true },
+    });
+
+    if (!hackathon) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Hackathon not found.', 404);
+    }
+
+    if (!['COMPLETED', 'ARCHIVED'].includes(hackathon.status)) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError('Leaderboard is only visible after results are final.', 403);
+    }
+
+    if (hackathon.scoreboardReleaseAt && new Date() < hackathon.scoreboardReleaseAt) {
+      const AppError = require('../../utils/AppError');
+      throw new AppError(`Scoreboard is currently private. Check back after ${hackathon.scoreboardReleaseAt.toLocaleString()}.`, 403);
+    }
+
+    // AF2: Check data lag
+    const latestScore = await prisma.score.findFirst({
+      where: { submission: { hackathonId } },
+      orderBy: { updatedAt: 'desc' },
+      select: { updatedAt: true },
+    });
+
+    const latestSubmission = await prisma.submission.findFirst({
+      where: { hackathonId, status: 'SCORED' },
+      orderBy: { updatedAt: 'desc' },
+      select: { updatedAt: true },
+    });
+
+    const isLagging = latestScore && latestSubmission && latestScore.updatedAt > latestSubmission.updatedAt;
+    const metadata = isLagging ? { prompt: 'Scores are currently being processed. Displayed data may be slightly delayed.' } : null;
+
     // Try Redis cache first
     try {
-      const cached = await redisClient.get(LEADERBOARD_KEY(hackathonId));
-      if (cached) {
-        const all = JSON.parse(cached);
+      const key = LEADERBOARD_KEY(hackathonId);
+      const cached = await redisClient.zRange(key, offset, offset + limit - 1, { REV: true });
+      if (cached && cached.length > 0) {
+        const total = await redisClient.zCard(key);
         return {
-          data: all.slice(offset, offset + limit),
+          data: cached.map(c => JSON.parse(c)),
           pagination: {
             page,
             limit,
-            total: all.length,
-            totalPages: Math.ceil(all.length / limit),
+            total,
+            totalPages: Math.ceil(total / limit),
           },
+          metadata,
         };
       }
     } catch (err) {
@@ -104,6 +143,7 @@ class LeaderboardService {
         total,
         totalPages: Math.ceil(total / limit),
       },
+      metadata,
     };
   }
 
