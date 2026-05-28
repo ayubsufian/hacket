@@ -1,5 +1,5 @@
 import { apiRequest } from './client'
-import type { LeaderboardEntry, Pagination } from '../types/models'
+import type { JudgingCriteria, LeaderboardEntry, Pagination } from '../types/models'
 
 export interface SubmitScoreInput {
   submissionId: string
@@ -49,5 +49,20 @@ export async function getScoreBreakdown(submissionId: string) {
   const response = await apiRequest<ScoreBreakdown[]>(`/judging/breakdown/${submissionId}`, {
     auth: true,
   })
+  return response.data
+}
+
+export async function getCriteria(hackathonId: string) {
+  const response = await apiRequest<JudgingCriteria[]>(`/judging/criteria/${hackathonId}`, {
+    auth: true,
+  })
+  return response.data
+}
+
+export async function getMyJudgingAssignments(hackathonId: string) {
+  const response = await apiRequest<{ submissionId: string }[]>(
+    `/judging/assignments/${hackathonId}`,
+    { auth: true },
+  )
   return response.data
 }

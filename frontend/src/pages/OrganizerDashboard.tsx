@@ -1,11 +1,29 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck, ImageIcon, X, UserPlus, Copy, Check, Mail } from 'lucide-react'
+import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck, ImageIcon, X, UserPlus, Copy, Check, Mail, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { listEvents, createEvent, deleteEvent, generateStaffInvitationLink } from '../api/events'
+import { listEvents, createEvent, deleteEvent, generateStaffInvitationLink, getStaffAssignments } from '../api/events'
 import { normalizeScores } from '../api/judging'
 import { exportAnalyticsReport } from '../api/analytics'
 import { useAuth } from '../contexts/AuthContext'
-import type { Hackathon } from '../types/models'
+import type { Hackathon, StaffAssignment, StaffRole } from '../types/models'
+
+const ALL_STAFF_ROLES: { value: StaffRole; label: string }[] = [
+    { value: 'JUDGE',          label: 'Judge' },
+    { value: 'MENTOR',         label: 'Mentor' },
+    { value: 'TECHNICAL_LEAD', label: 'Technical Lead' },
+    { value: 'LOGISTICS',      label: 'Logistics' },
+    { value: 'COMMUNICATIONS', label: 'Communications' },
+    { value: 'FINANCE',        label: 'Finance' },
+]
+
+const ROLE_BADGE: Record<StaffRole, string> = {
+    JUDGE:          'bg-indigo-50 text-indigo-700 border-indigo-200',
+    MENTOR:         'bg-emerald-50 text-emerald-700 border-emerald-200',
+    TECHNICAL_LEAD: 'bg-violet-50 text-violet-700 border-violet-200',
+    LOGISTICS:      'bg-orange-50 text-orange-700 border-orange-200',
+    COMMUNICATIONS: 'bg-sky-50 text-sky-700 border-sky-200',
+    FINANCE:        'bg-rose-50 text-rose-700 border-rose-200',
+}
 
 export default function OrganizerDashboard() {
     const { user, isAuthenticated } = useAuth()
@@ -21,8 +39,11 @@ export default function OrganizerDashboard() {
     const [normalizingId, setNormalizingId] = useState<string | null>(null)
     const [exportingId, setExportingId] = useState<string | null>(null)
     const [actionMsg, setActionMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+    const [staffByEvent, setStaffByEvent] = useState<Record<string, StaffAssignment[]>>({})
+    const [staffEventId, setStaffEventId] = useState<string | null>(null)
+    const [staffLoading, setStaffLoading] = useState(false)
     const [inviteEventId, setInviteEventId] = useState<string | null>(null)
-    const [inviteForm, setInviteForm] = useState({ email: '', role: 'JUDGE' as 'JUDGE' | 'MENTOR' })
+    const [inviteForm, setInviteForm] = useState({ email: '', role: 'JUDGE' as StaffRole })
     const [generatedLink, setGeneratedLink] = useState('')
     const [generatingLink, setGeneratingLink] = useState(false)
     const [inviteError, setInviteError] = useState<string | null>(null)
@@ -127,6 +148,19 @@ export default function OrganizerDashboard() {
         setGeneratedLink('')
         setInviteError(null)
         setInviteForm({ email: '', role: 'JUDGE' })
+    }
+
+    const toggleStaffPanel = async (eventId: string) => {
+        if (staffEventId === eventId) { setStaffEventId(null); return }
+        setStaffEventId(eventId)
+        if (staffByEvent[eventId]) return
+        try {
+            setStaffLoading(true)
+            const list = await getStaffAssignments(eventId)
+            setStaffByEvent(prev => ({ ...prev, [eventId]: Array.isArray(list) ? list : [] }))
+        } catch {
+            setStaffByEvent(prev => ({ ...prev, [eventId]: [] }))
+        } finally { setStaffLoading(false) }
     }
 
     const handleDelete = async (ev: Hackathon) => {
@@ -315,8 +349,15 @@ export default function OrganizerDashboard() {
                                         Delete
                                     </button>
                                     <button
+                                        onClick={() => void toggleStaffPanel(ev.id)}
+                                        title="View staff"
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${staffEventId === ev.id ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-blue-200 text-blue-600 hover:bg-blue-50'}`}
+                                    >
+                                        <Users size={13} /> Staff
+                                    </button>
+                                    <button
                                         onClick={() => openInvitePanel(ev.id)}
-                                        title="Invite judge or mentor"
+                                        title="Invite staff member"
                                         className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${inviteEventId === ev.id ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-violet-200 text-violet-600 hover:bg-violet-50'}`}
                                     >
                                         <UserPlus size={13} /> Invite
@@ -324,6 +365,31 @@ export default function OrganizerDashboard() {
                                     <Link to={`/events/${ev.id}`}><ChevronRight className="text-gray-300 group-hover:text-accent-500 transition-all" /></Link>
                                 </div>
                             </div>
+
+                            {/* Staff list panel */}
+                            {staffEventId === ev.id && (
+                                <div className="mt-4 p-4 rounded-xl border border-blue-100 bg-blue-50/40 space-y-3">
+                                    <p className="text-xs font-semibold text-blue-700 flex items-center gap-1.5">
+                                        <Users size={13} /> Staff assignments — <span className="font-bold truncate">{ev.title}</span>
+                                    </p>
+                                    {staffLoading ? (
+                                        <div className="flex items-center gap-2 text-xs text-blue-500"><Loader2 size={13} className="animate-spin" /> Loading staff…</div>
+                                    ) : (staffByEvent[ev.id] ?? []).length === 0 ? (
+                                        <p className="text-xs text-blue-500">No staff assigned yet. Use Invite to add members.</p>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-2">
+                                            {(staffByEvent[ev.id] ?? []).map(s => (
+                                                <div key={s.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium ${ROLE_BADGE[s.staffRole] ?? 'bg-gray-50 text-gray-700 border-gray-200'}`}>
+                                                    <ShieldCheck size={12} />
+                                                    <span>{s.user?.profile?.firstName ?? s.user?.email ?? s.userId}</span>
+                                                    <span className="opacity-60">· {s.staffRole.replace(/_/g, ' ')}</span>
+                                                    {s.isLead && <span className="ml-1 font-bold opacity-80">★</span>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {inviteEventId === ev.id && (
                                 <div className="mt-4 p-4 rounded-xl border border-violet-100 bg-violet-50/60 space-y-3">
@@ -340,11 +406,12 @@ export default function OrganizerDashboard() {
                                         />
                                         <select
                                             value={inviteForm.role}
-                                            onChange={e => { setInviteForm(f => ({ ...f, role: e.target.value as 'JUDGE' | 'MENTOR' })); setGeneratedLink('') }}
+                                            onChange={e => { setInviteForm(f => ({ ...f, role: e.target.value as StaffRole })); setGeneratedLink('') }}
                                             className="input-field !w-auto text-sm h-9"
                                         >
-                                            <option value="JUDGE">Judge</option>
-                                            <option value="MENTOR">Mentor</option>
+                                            {ALL_STAFF_ROLES.map(r => (
+                                                <option key={r.value} value={r.value}>{r.label}</option>
+                                            ))}
                                         </select>
                                         <button
                                             type="button"

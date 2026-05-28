@@ -151,6 +151,45 @@ export interface Submission {
   }
 }
 
+export interface JudgingCriteria {
+  id: string
+  hackathonId: string
+  name: string
+  nameAm?: string | null
+  description?: string | null
+  maxScore: number
+  weight: number
+  sortOrder: number
+}
+
+export type StaffRole = 'JUDGE' | 'MENTOR' | 'TECHNICAL_LEAD' | 'LOGISTICS' | 'COMMUNICATIONS' | 'FINANCE'
+
+export interface StaffAssignment {
+  id: string
+  userId: string
+  hackathonId: string
+  staffRole: StaffRole
+  isLead: boolean
+  isActive: boolean
+  createdAt: string
+  user?: {
+    id: string
+    email: string
+    profile?: UserProfile | null
+  }
+}
+
+export interface StaffInvitation {
+  id: string
+  hackathonId: string
+  email: string
+  staffRole: StaffRole
+  token: string
+  expiresAt: string
+  createdAt: string
+  acceptedAt?: string | null
+}
+
 export interface LeaderboardEntry {
   rank: number
   finalScore: number | null

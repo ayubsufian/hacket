@@ -70,23 +70,20 @@ export async function respondToInvitation(invitationId: string, accept: boolean)
 
 // Get user's current team (will need to be implemented in backend)
 export async function getMyTeam(hackathonId: string) {
-  // For now, we'll use a workaround by checking user's team membership
-  // This will be updated when backend adds the endpoint
-  const response = await apiRequest<{ team: Team }>(`/teams/my-team?hackathonId=${hackathonId}`, {
+  const response = await apiRequest<Team[]>(`/teams?hackathonId=${hackathonId}`, {
     auth: true,
   }).catch(() => null)
-  
-  return response?.data?.team || null
+  const teams = response?.data
+  return (Array.isArray(teams) ? teams[0] : null) ?? null
 }
 
 // Get pending invitations for the current user
 export async function getMyInvitations() {
-  // This will need to be implemented in backend
   try {
-    const response = await apiRequest<{ invitations: TeamInvitation[] }>('/teams/invitations/my', {
+    const response = await apiRequest<TeamInvitation[]>('/teams/invitations', {
       auth: true,
     })
-    return response.data.invitations
+    return Array.isArray(response.data) ? response.data : []
   } catch {
     return []
   }

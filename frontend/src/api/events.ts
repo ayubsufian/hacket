@@ -1,5 +1,5 @@
 import { apiRequest } from './client'
-import type { Hackathon, Pagination, Team } from '../types/models'
+import type { Hackathon, Pagination, StaffAssignment, StaffRole, Team } from '../types/models'
 
 export interface ListEventsInput {
   status?: string
@@ -69,12 +69,9 @@ export async function deleteEvent(eventId: string) {
   })
 }
 
-// TODO: Backend endpoint needed: POST /events/:id/staff/invitations
-// Request: { email: string, role: 'JUDGE' | 'MENTOR' }
-// Response: { invitationLink: string, expiresAt: string }
 export async function generateStaffInvitationLink(
   eventId: string,
-  input: { email: string; role: 'JUDGE' | 'MENTOR' }
+  input: { email: string; role: StaffRole }
 ) {
   const response = await apiRequest<{ invitationLink: string; expiresAt: string }>(
     `/events/${eventId}/staff/invitations`,
@@ -85,4 +82,23 @@ export async function generateStaffInvitationLink(
     }
   )
   return response.data
+}
+
+export async function getStaffAssignments(eventId: string) {
+  const response = await apiRequest<StaffAssignment[]>(`/events/${eventId}/staff`, {
+    auth: true,
+  })
+  return response.data
+}
+
+export async function acceptStaffInvitation(token: string) {
+  const response = await apiRequest<{ assignment: StaffAssignment }>(
+    `/staff/invitations/accept`,
+    {
+      method: 'POST',
+      auth: true,
+      body: JSON.stringify({ token }),
+    }
+  )
+  return response.data.assignment
 }
