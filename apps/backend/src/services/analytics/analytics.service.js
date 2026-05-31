@@ -4,22 +4,39 @@
 // =============================================================================
 
 const prisma = require('../../config/database');
+const fs = require('fs/promises');
+const path = require('path');
+const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const { createObjectCsvStringifier } = require('csv-writer');
 const AppError = require('../../utils/AppError');
+const { redisClient } = require('../../config/redis');
+const { normalizePagination, buildPagination } = require('../../utils/pagination');
+
+const UPLOADS_DIR = path.join(__dirname, '../../../../uploads');
+const REPORT_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 class AnalyticsService {
   /**
    * Get full analytics report data for a hackathon.
    */
-  async getReport(hackathonId) {
+  async getReport(hackathonId, parameters = {}) {
+    const cacheKey = this._reportCacheKey(hackathonId, parameters);
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (err) {
+      console.warn('[Analytics] Redis cache get error:', err.message);
+    }
+
     const hackathon = await prisma.hackathon.findUnique({
       where: { id: hackathonId },
-      select: { id: true, title: true, eventStart: true, eventEnd: true },
+      select: { id: true, title: true, status: true, eventStart: true, eventEnd: true, updatedAt: true },
     });
 
     if (!hackathon) throw new AppError('Hackathon not found.', 404);
 
+    const dateWhere = this._dateWhere(parameters);
     const [
       teamCount,
       participantCount,
@@ -29,16 +46,16 @@ class AnalyticsService {
       skillDistribution,
       judgeMetrics,
     ] = await Promise.all([
-      prisma.team.count({ where: { hackathonId } }),
-      prisma.teamMember.count({ where: { team: { hackathonId } } }),
-      prisma.submission.count({ where: { hackathonId } }),
+      prisma.team.count({ where: { hackathonId, ...dateWhere('createdAt') } }),
+      prisma.teamMember.count({ where: { team: { hackathonId }, ...dateWhere('joinedAt') } }),
+      prisma.submission.count({ where: { hackathonId, ...dateWhere('createdAt') } }),
       prisma.submission.groupBy({
         by: ['status'],
-        where: { hackathonId },
+        where: { hackathonId, ...dateWhere('createdAt') },
         _count: { id: true },
       }),
       prisma.submission.findMany({
-        where: { hackathonId, finalScore: { not: null } },
+        where: { hackathonId, finalScore: { not: null }, ...dateWhere('createdAt') },
         orderBy: { rank: 'asc' },
         take: 10,
         select: {
@@ -48,12 +65,16 @@ class AnalyticsService {
           team: { select: { name: true } },
         },
       }),
-      this._getSkillDistribution(hackathonId),
-      this._getJudgePerformanceMetrics(hackathonId),
+      this._getSkillDistribution(hackathonId, dateWhere),
+      this._getJudgePerformanceMetrics(hackathonId, dateWhere),
     ]);
 
-    return {
+    const report = {
       hackathon,
+      parameters: {
+        from: parameters.from || null,
+        to: parameters.to || null,
+      },
       summary: {
         totalTeams: teamCount,
         totalParticipants: participantCount,
@@ -72,14 +93,25 @@ class AnalyticsService {
       skillDistribution,
       judgeMetrics,
     };
+
+    try {
+      const ttlSeconds = ['COMPLETED', 'ARCHIVED', 'CANCELLED'].includes(hackathon.status)
+        ? 60 * 60 * 12
+        : 60 * 5;
+      await redisClient.setEx(cacheKey, ttlSeconds, JSON.stringify(report));
+    } catch (err) {
+      console.warn('[Analytics] Redis cache set error:', err.message);
+    }
+
+    return report;
   }
 
   /**
    * Generate a PDF report.
    * @returns {Buffer}
    */
-  async generatePDF(hackathonId) {
-    const data = await this.getReport(hackathonId);
+  async generatePDF(hackathonId, parameters = {}) {
+    const data = await this.getReport(hackathonId, parameters);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50 });
@@ -159,8 +191,8 @@ class AnalyticsService {
    * Generate a CSV report.
    * @returns {string} CSV string
    */
-  async generateCSV(hackathonId) {
-    const data = await this.getReport(hackathonId);
+  async generateCSV(hackathonId, parameters = {}) {
+    const data = await this.getReport(hackathonId, parameters);
 
     const csvStringifier = createObjectCsvStringifier({
       header: [

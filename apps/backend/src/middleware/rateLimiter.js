@@ -72,9 +72,79 @@ const invitationLimiter = rateLimit({
   },
 });
 
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.user?.id || ipKeyGenerator(req.ip)}:${req.ip}`,
+  message: {
+    success: false,
+    status: 'fail',
+    message: 'Too many admin requests. Please try again later.',
+  },
+});
+
+const adminMutationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.user?.id || ipKeyGenerator(req.ip)}:${req.ip}`,
+  message: {
+    success: false,
+    status: 'fail',
+    message: 'Too many administrative changes. Please wait before trying again.',
+  },
+});
+
+const feedbackLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.user?.id || ipKeyGenerator(req.ip)}:${req.ip}`,
+  message: {
+    success: false,
+    status: 'fail',
+    message: 'Too many feedback attempts. Please try again later.',
+  },
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.user?.id || ipKeyGenerator(req.ip)}:${req.ip}`,
+  message: {
+    success: false,
+    status: 'fail',
+    message: 'Too many upload requests. Please try again later.',
+  },
+});
+
+const searchLogLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
+  message: {
+    success: false,
+    status: 'fail',
+    message: 'Too many search requests. Please slow down.',
+  },
+});
+
 module.exports = {
   globalLimiter,
   authLimiter,
   passwordResetLimiter,
   invitationLimiter,
+  adminLimiter,
+  adminMutationLimiter,
+  feedbackLimiter,
+  uploadLimiter,
+  searchLogLimiter,
 };

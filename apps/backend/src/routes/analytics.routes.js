@@ -8,7 +8,7 @@ const { Router } = require('express');
 const Joi = require('joi');
 const analyticsController = require('../controllers/analytics.controller');
 const authenticate = require('../middleware/auth');
-const authorize = require('../middleware/authorize');
+const authorizeEventStaff = require('../middleware/authorizeEventStaff');
 const validate = require('../middleware/validate');
 
 const router = Router();
@@ -30,9 +30,29 @@ router.post(
 // ── Authenticated Routes ────────────────────────────────────────────────
 
 router.use(authenticate);
-router.use(authorize('ORGANIZER', 'ADMIN'));
 
-router.get('/:hackathonId/report', analyticsController.getReport);
-router.get('/:hackathonId/export', analyticsController.exportReport);
+const reportJobSchema = Joi.object({
+  format: Joi.string().valid('PDF', 'CSV', 'JSON', 'XLSX', 'pdf', 'csv', 'json', 'xlsx').default('CSV'),
+  from: Joi.date().iso().optional(),
+  to: Joi.date().iso().optional(),
+  fields: Joi.array().items(Joi.string().max(100)).max(50).default([]),
+  parameters: Joi.object().unknown(true).default({}),
+});
+
+const snapshotSchema = Joi.object({
+  snapshotType: Joi.string().valid('DAILY', 'ON_DEMAND').default('ON_DEMAND'),
+  expiresAt: Joi.date().iso().allow(null),
+});
+
+router.get('/:hackathonId/report', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.getReport);
+router.get('/:hackathonId/export', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.exportReport);
+
+router.post('/:hackathonId/reports', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), validate(reportJobSchema), analyticsController.createReportJob);
+router.get('/:hackathonId/reports/:jobId/status', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.getReportJobStatus);
+router.get('/:hackathonId/reports/:jobId/download', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.downloadReport);
+
+router.get('/:hackathonId/snapshots', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.listSnapshots);
+router.get('/:hackathonId/snapshots/:snapshotId', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.getSnapshot);
+router.post('/:hackathonId/snapshots', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), validate(snapshotSchema), analyticsController.createSnapshot);
 
 module.exports = router;
