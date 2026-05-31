@@ -45,9 +45,9 @@ export default function AdminPage() {
         </div>
     )
 
-    const registrationOpen = events.filter(event => event.status === 'REGISTRATION_OPEN').length
-    const inProgress = events.filter(event => event.status === 'IN_PROGRESS').length
-    const completed = events.filter(event => event.status === 'COMPLETED').length
+    const registrationOpen = events?.filter(event => event.status === 'REGISTRATION_OPEN').length ?? 0
+    const inProgress = events?.filter(event => event.status === 'IN_PROGRESS').length ?? 0
+    const completed = events?.filter(event => event.status === 'COMPLETED').length ?? 0
 
     return (
         <div className="max-w-6xl mx-auto space-y-6 animate-fade-up">
@@ -76,7 +76,7 @@ export default function AdminPage() {
                 <div className="card p-6 border-transparent hover:border-gray-200">
                     <div className="flex items-center gap-4">
                         <div className="h-12 w-12 rounded-full bg-accent-100 text-accent-600 flex items-center justify-center"><Calendar size={24} /></div>
-                        <div><p className="text-sm font-medium text-gray-500">Total Events</p><p className="text-3xl font-bold text-gray-900">{events.length}</p></div>
+                        <div><p className="text-sm font-medium text-gray-500">Total Events</p><p className="text-3xl font-bold text-gray-900">{events?.length ?? 0}</p></div>
                     </div>
                 </div>
                 <div className="card p-6 border-transparent hover:border-gray-200">
@@ -101,13 +101,13 @@ export default function AdminPage() {
                 <table className="tbl !border-t-0">
                     <thead><tr><th className="pl-6">Title</th><th>Organizer</th><th>Status</th><th className="pr-6">Timeline</th></tr></thead>
                     <tbody className="divide-y divide-gray-100">
-                        {events.length === 0 ? <tr className="!bg-white"><td colSpan={4} className="py-10 text-center text-gray-500">No events found</td></tr> :
-                            events.map(ev => (
+                        {events?.length === 0 ? <tr className="!bg-white"><td colSpan={4} className="py-10 text-center text-gray-500">No events found</td></tr> :
+                            events?.map(ev => (
                                 <tr key={ev.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="pl-6"><Link to={`/events/${ev.id}`} className="font-semibold text-gray-900 hover:text-accent-600">{ev.title}</Link></td>
                                     <td className="text-gray-600 text-sm">{ev.organizerId || 'Unknown'}</td>
-                                    <td><span className="badge badge-gray">{ev.status.replace(/_/g, ' ')}</span></td>
-                                    <td className="pr-6 text-sm text-gray-500">{new Date(ev.eventStart).toLocaleDateString()} - {new Date(ev.eventEnd).toLocaleDateString()}</td>
+                                    <td><span className="badge badge-gray">{ev.status?.replace(/_/g, ' ') || '—'}</span></td>
+                                    <td className="pr-6 text-sm text-gray-500">{ev.eventStart ? new Date(ev.eventStart).toLocaleDateString() : '—'} - {ev.eventEnd ? new Date(ev.eventEnd).toLocaleDateString() : '—'}</td>
                                 </tr>
                             ))}
                     </tbody>
