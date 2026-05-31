@@ -47,14 +47,26 @@ const respondSchema = Joi.object({
 
 router.use(authenticate); // All team routes require auth
 
-router.post('/', ensureVerified, ensureProfileComplete, validate(createSchema), teamsController.create);
+router.post(
+  '/',
+  ensureVerified,
+  ensureProfileComplete,
+  validate(createSchema),
+  teamsController.create,
+);
 router.get('/:id', teamsController.getById);
 router.put('/:id', validate(updateSchema), teamsController.update);
-router.post('/:id/invite', ensureVerified, ensureProfileComplete, validate(inviteSchema), teamsController.sendInvitation);
+router.post(
+  '/:id/invite',
+  ensureVerified,
+  ensureProfileComplete,
+  validate(inviteSchema),
+  teamsController.sendInvitation,
+);
 router.post(
   '/invitations/:id/respond',
   validate(respondSchema),
-  teamsController.respondToInvitation
+  teamsController.respondToInvitation,
 );
 router.post('/:id/leave', teamsController.leave);
 

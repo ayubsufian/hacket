@@ -61,7 +61,7 @@ exports.respondToInvitation = catchAsync(async (req, res) => {
   const result = await teamsService.respondToInvitation(
     req.params.id,
     req.user.id,
-    req.body.accept
+    req.body.accept,
   );
 
   res.status(200).json({
