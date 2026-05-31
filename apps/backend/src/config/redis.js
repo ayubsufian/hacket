@@ -8,7 +8,12 @@ const { createClient } = require('redis');
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const SESSION_TTL_SECONDS = 30 * 60; // 30-minute inactivity timeout
-const PARTICIPANT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days for Participant role
+const ALLOW_REDIS_FALLBACK =
+  process.env.ALLOW_REDIS_FALLBACK === 'true' ||
+  (!process.env.ALLOW_REDIS_FALLBACK && process.env.NODE_ENV !== 'production');
+
+let redisAvailable = false;
+const memorySessions = new Map();
 
 const redisClient = createClient({
   url: REDIS_URL,
@@ -34,7 +39,16 @@ redisClient.on('reconnecting', () => console.log('[Redis] Reconnecting...'));
  */
 async function connectRedis() {
   if (!redisClient.isOpen) {
-    await redisClient.connect();
+    try {
+      await redisClient.connect();
+      redisAvailable = true;
+    } catch (err) {
+      redisAvailable = false;
+      if (!ALLOW_REDIS_FALLBACK) {
+        throw err;
+      }
+      console.warn('[Redis] Unavailable. Falling back to in-memory sessions for local development.');
+    }
   }
 }
 
@@ -42,9 +56,10 @@ async function connectRedis() {
  * Gracefully disconnect from Redis. Call at shutdown.
  */
 async function disconnectRedis() {
-  if (redisClient.isOpen) {
+  if (redisClient.isOpen && redisAvailable) {
     await redisClient.quit();
   }
+  memorySessions.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -56,21 +71,17 @@ async function disconnectRedis() {
  * @param {string} token
  * @param {object} sessionData - Arbitrary session payload (role, etc.)
  */
-async function setSession(token, sessionData) {
-  const key = `session:${token}`;
-  
-  const hashData = {};
-  for (const [k, v] of Object.entries(sessionData)) {
-    hashData[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+async function setSession(userId, sessionData) {
+  const key = `session:${userId}`;
+  if (redisAvailable) {
+    await redisClient.set(key, JSON.stringify(sessionData), { EX: SESSION_TTL_SECONDS });
+    return;
   }
-  
-  await redisClient.hSet(key, hashData);
 
-  // 2026 Standard: Participants get extended 7-day sessions, other roles get 30-min sliding window
-  const ttl = sessionData.role === 'PARTICIPANT'
-    ? PARTICIPANT_TTL_SECONDS
-    : SESSION_TTL_SECONDS;
-  await redisClient.expire(key, ttl);
+  memorySessions.set(key, {
+    payload: sessionData,
+    expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
+  });
 }
 
 /**
@@ -79,26 +90,38 @@ async function setSession(token, sessionData) {
  * @param {string} token
  * @returns {object|null}
  */
-async function getSession(token) {
-  const key = `session:${token}`;
-  const data = await redisClient.hGetAll(key);
-  if (!data || Object.keys(data).length === 0) return null;
+async function getSession(userId) {
+  const key = `session:${userId}`;
+  if (redisAvailable) {
+    const data = await redisClient.get(key);
+    if (!data) return null;
 
-  // Refresh TTL on every access (sliding window)
-  // Use role-aware TTL
-  const ttl = data.role === 'PARTICIPANT'
-    ? PARTICIPANT_TTL_SECONDS
-    : SESSION_TTL_SECONDS;
-  await redisClient.expire(key, ttl);
-  return data;
+    await redisClient.expire(key, SESSION_TTL_SECONDS);
+    return JSON.parse(data);
+  }
+
+  const data = memorySessions.get(key);
+  if (!data) return null;
+  if (Date.now() > data.expiresAt) {
+    memorySessions.delete(key);
+    return null;
+  }
+
+  data.expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
+  return data.payload;
 }
 
 /**
  * Destroy a user session.
  * @param {string} token
  */
-async function destroySession(token) {
-  await redisClient.del(`session:${token}`);
+async function destroySession(userId) {
+  const key = `session:${userId}`;
+  if (redisAvailable) {
+    await redisClient.del(key);
+    return;
+  }
+  memorySessions.delete(key);
 }
 
 module.exports = {
@@ -109,5 +132,5 @@ module.exports = {
   getSession,
   destroySession,
   SESSION_TTL_SECONDS,
-  PARTICIPANT_TTL_SECONDS,
+  // PARTICIPANT_TTL_SECONDS,
 };

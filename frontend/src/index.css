@@ -1,0 +1,249 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply m-0 min-h-screen bg-page font-sans text-gray-700 antialiased;
+  }
+
+  html.dark body {
+    @apply bg-page-dark text-gray-300;
+  }
+
+  a {
+    @apply no-underline;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    @apply font-sans;
+  }
+
+  ::selection {
+    background: rgba(22, 163, 74, .14);
+  }
+
+  * {
+    @apply transition-colors duration-150;
+  }
+}
+
+@layer components {
+
+  /* ── Cards ── */
+  .card {
+    @apply rounded-xl bg-surface border border-border shadow-card transition-shadow duration-200;
+  }
+
+  html.dark .card {
+    @apply bg-surface-dark border-border-dark;
+  }
+
+  .card:hover {
+    @apply shadow-card-hover;
+  }
+
+  .card-elevated {
+    @apply rounded-2xl bg-surface shadow-elevated border border-transparent;
+  }
+
+  html.dark .card-elevated {
+    @apply bg-surface-dark;
+  }
+
+  /* ── Inputs ── */
+  .input-field {
+    @apply h-10 w-full rounded-lg border border-gray-200 bg-white px-3.5 text-sm text-gray-900 outline-none placeholder:text-gray-400 transition-all duration-200 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 focus:shadow-glow-green;
+  }
+
+  html.dark .input-field {
+    @apply border-gray-600 bg-surface-dark text-gray-100 placeholder:text-gray-500;
+  }
+
+  textarea.input-field {
+    @apply h-auto py-2.5;
+  }
+
+  /* ── Buttons ── */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-b from-accent-500 to-accent-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-accent-600/20 transition-all duration-200 hover:from-accent-600 hover:to-accent-700 hover:shadow-md hover:shadow-accent-600/25 hover:-translate-y-px active:translate-y-0 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-all duration-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-card hover:-translate-y-px active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  html.dark .btn-secondary {
+    @apply border-gray-600 bg-surface-dark text-gray-300 hover:bg-surface-raised-dark hover:border-gray-500;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium text-gray-600 transition-all duration-150 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50;
+  }
+
+  html.dark .btn-ghost {
+    @apply text-gray-400 hover:bg-surface-raised-dark hover:text-gray-200;
+  }
+
+  /* ── Badges ── */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold border;
+  }
+
+  .badge-green {
+    @apply border-accent-200 bg-accent-50 text-accent-700;
+  }
+
+  html.dark .badge-green {
+    @apply border-accent-800 bg-accent-900/30 text-accent-400;
+  }
+
+  .badge-yellow {
+    @apply border-amber-200 bg-amber-50 text-amber-700;
+  }
+
+  html.dark .badge-yellow {
+    @apply border-amber-800 bg-amber-900/30 text-amber-400;
+  }
+
+  .badge-blue {
+    @apply border-blue-200 bg-blue-50 text-blue-700;
+  }
+
+  html.dark .badge-blue {
+    @apply border-blue-800 bg-blue-900/30 text-blue-400;
+  }
+
+  .badge-gray {
+    @apply border-gray-200 bg-gray-50 text-gray-500;
+  }
+
+  html.dark .badge-gray {
+    @apply border-gray-600 bg-surface-raised-dark text-gray-400;
+  }
+
+  .badge-red {
+    @apply border-red-200 bg-red-50 text-red-700;
+  }
+
+  html.dark .badge-red {
+    @apply border-red-800 bg-red-900/30 text-red-400;
+  }
+
+  /* ── Tables ── */
+  .tbl {
+    @apply w-full text-sm;
+  }
+
+  .tbl th {
+    @apply py-2.5 pr-4 text-left text-2xs font-semibold uppercase tracking-wider text-gray-400 border-b border-border bg-surface-raised;
+  }
+
+  html.dark .tbl th {
+    @apply border-border-dark bg-surface-dark text-gray-500;
+  }
+
+  .tbl td {
+    @apply py-3 pr-4 border-b border-gray-100 text-gray-700;
+  }
+
+  html.dark .tbl td {
+    @apply border-gray-700 text-gray-300;
+  }
+
+  .tbl tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .tbl tbody tr {
+    @apply transition-colors duration-150 hover:bg-accent-50/30;
+  }
+
+  html.dark .tbl tbody tr:hover {
+    @apply bg-accent-900/20;
+  }
+
+  /* ── Section label ── */
+  .section-title {
+    @apply text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3;
+  }
+
+  /* ── Gradient text ── */
+  .gradient-text {
+    @apply bg-gradient-to-r from-accent-600 via-emerald-500 to-teal-500 bg-clip-text text-transparent;
+  }
+
+  /* ── Skeleton ── */
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-gray-100;
+  }
+
+  html.dark .skeleton {
+    @apply bg-gray-700;
+  }
+
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer;
+    transform: translateX(-100%);
+  }
+
+  html.dark .skeleton::after {
+    @apply via-white/10;
+  }
+
+  /* ── Alert ── */
+  .alert-error {
+    @apply rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 animate-fade-in;
+  }
+
+  html.dark .alert-error {
+    @apply border-red-800 bg-red-900/30 text-red-400;
+  }
+
+  .alert-success {
+    @apply rounded-lg border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-accent-700 animate-fade-in;
+  }
+
+  html.dark .alert-success {
+    @apply border-accent-800 bg-accent-900/30 text-accent-400;
+  }
+
+  .alert-warn {
+    @apply rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 animate-fade-in;
+  }
+
+  html.dark .alert-warn {
+    @apply border-amber-800 bg-amber-900/30 text-amber-400;
+  }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}

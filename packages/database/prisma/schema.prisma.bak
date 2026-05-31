@@ -1,21 +1,12 @@
-// =============================================================================
-// HackET Platform — Prisma Schema
-// Location: packages/database/prisma/schema.prisma
-//
-// This schema defines the complete data model for the HackET multi-tenant
-// hackathon management platform. All tables use snake_case via @map/@@ map.
-// UUIDs are used as primary keys (PostgreSQL gen_random_uuid()).
-// =============================================================================
-
 generator client {
-  provider        = "prisma-client-js"
-  output          = "../../../node_modules/.prisma/client"
-  binaryTargets   = ["native", "debian-openssl-1.1.x", "linux-musl"]
-  previewFeatures = ["driverAdapters"]
+  provider      = "prisma-client-js"
+  output        = "../../../node_modules/.prisma/client"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "linux-musl"]
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // =============================================================================
@@ -153,28 +144,6 @@ enum AuditAction {
   JUDGING_CRITERIA_UPDATED
   JUDGING_CRITERIA_DELETED
   JUDGING_ASSIGNMENT_DELETED
-  USER_ROLE_CHANGED
-  HACKATHON_STATUS_CHANGED
-  JOB_CANCELLED
-  SEARCH_REINDEX_REQUESTED
-  CERTIFICATE_DOWNLOADED
-  CERTIFICATE_REVOKED
-  CERTIFICATE_REGENERATE_REQUESTED
-  DISCUSSION_UPDATED
-  DISCUSSION_DELETED
-  DISCUSSION_COMMENT_UPDATED
-  DISCUSSION_COMMENT_DELETED
-  DISCUSSION_STATUS_CHANGED
-  DISCUSSION_PINNED
-  DISCUSSION_UNPINNED
-  DISCUSSION_FLAGGED
-  FEEDBACK_VIEWED
-  NOTIFICATION_PREFERENCES_UPDATED
-  BROADCAST_CANCELLED
-  ORGANIZATION_LOGO_UPDATED
-  PROFILE_AVATAR_UPDATED
-  STORAGE_FILE_UPLOADED
-  STORAGE_FILE_DELETED
 }
 
 enum StaffRole {
@@ -262,7 +231,6 @@ enum JobStatus {
   RUNNING
   COMPLETED
   FAILED
-  CANCELLED
 }
 
 enum SnapshotType {
@@ -312,21 +280,6 @@ enum OrgMemberRole {
   MEMBER
 }
 
-enum NotificationBroadcastStatus {
-  QUEUED
-  RUNNING
-  SENT
-  CANCELLED
-  FAILED
-}
-
-enum ModerationFlagStatus {
-  PENDING
-  REVIEWED
-  DISMISSED
-  ACTIONED
-}
-
 // =============================================================================
 // USER & PROFILE
 // =============================================================================
@@ -355,30 +308,27 @@ model User {
   certificates             Certificate[]
   certificatesIssued       Certificate[]               @relation("CertificateIssuer")
   auditLogs                AuditLog[]
-  staffAssignments         StaffAssignment[]
   bookmarks                Bookmark[]
+  certificateIssuanceJobs  CertificateIssuanceJob[]    @relation("CertificateIssuanceJobCreator")
+  certificatesIssued       Certificate[]               @relation("CertificateIssuer")
+  certificates             Certificate[]
+  commentsArchived         DiscussionComment[]         @relation("DiscussionCommentArchiver")
+  discussionComments       DiscussionComment[]
+  discussionsArchived      Discussion[]                @relation("DiscussionArchiver")
+  discussions              Discussion[]
+  analyticsSnapshots       EventAnalyticsSnapshot[]    @relation("AnalyticsSnapshotComputer")
+  eventFeedbacks           EventFeedback[]
+  organizedHackathons      Hackathon[]
   mentorAssignments        MentorAssignment[]
-  mentorRequestsSent       MentorRequest[]             @relation("MentorRequestRequester")
   mentorRequestsReceived   MentorRequest[]             @relation("MentorRequestMentor")
   mentorSessionsRequested  MentorSession[]             @relation("MentorSessionRequester")
   mentorSessionsMentored   MentorSession[]             @relation("MentorSessionMentor")
   organizationMemberships  OrganizationMember[]
-  discussions              Discussion[]
-  discussionComments       DiscussionComment[]
-  sessions                 Session[]
   passwordResetTokens      PasswordResetToken[]
   emailVerificationTokens  EmailVerificationToken[]
   registrations            Registration[]
-  eventFeedbacks           EventFeedback[]
-  notificationPreference   UserNotificationPreference?
-  notificationBroadcasts   NotificationBroadcast[]
-  certificateIssuanceJobs  CertificateIssuanceJob[]    @relation("CertificateIssuanceJobCreator")
-  analyticsJobs            AnalyticsJob[]              @relation("AnalyticsJobCreator")
-  analyticsSnapshots       EventAnalyticsSnapshot[]    @relation("AnalyticsSnapshotComputer")
-  organizedHackathons      Hackathon[]
   reportJobs               ReportJob[]                 @relation("ReportJobCreator")
-  adminInvitationsSent     AdminInvitation[]           @relation("AdminInvitationSender")
-  adminInvitationsAccepted AdminInvitation[]           @relation("AdminInvitationAccepter")
+  scores                   Score[]
   revokedSessions          Session[]                   @relation("SessionRevoker")
   staffInvitationsSent     StaffInvitation[]            @relation("StaffInvitationSender")
   staffInvitationsAccepted StaffInvitation[]            @relation("StaffInvitationAccepter")
@@ -410,22 +360,16 @@ model UserProfile {
   preferredLocale            String    @default("en") @map("preferred_locale") @db.VarChar(5)
   city                       String?
   region                     String?
-  representativeName         String?   @map("representative_name") @db.VarChar(255) // FR-USR-02: organizer representative
+  representativeName         String?   @map("representative_name") @db.VarChar(255)
   dateOfBirth                DateTime? @map("date_of_birth")
   isSeekingTeam              Boolean?  @default(true) @map("is_seeking_team")
   mentorMaxDailyInteractions Int?      @map("mentor_max_daily_interactions")
   createdAt                  DateTime  @default(now()) @map("created_at")
   updatedAt                  DateTime  @updatedAt @map("updated_at")
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
 }
-
-// =============================================================================
-// HACKATHON (MULTI-TENANT EVENT ENTITY)
-// =============================================================================
 
 model Hackathon {
   id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -481,16 +425,16 @@ model Hackathon {
 
   // Relations
   tags                    HackathonTag[]
-  teams                   Team[]
-  submissions             Submission[]
+  organization            Organization?            @relation(fields: [organizationId], references: [id])
+  organizer               User                     @relation(fields: [organizerId], references: [id])
   judgingCriteria         JudgingCriteria[]
   judgingAssignments      JudgingAssignment[]
   certificates            Certificate[]
   notificationBroadcasts  NotificationBroadcast[]
-  certificateIssuanceJobs CertificateIssuanceJob[]
-  analyticsJobs           AnalyticsJob[]
-  analyticsSnapshots      EventAnalyticsSnapshot[]
+  recommendations         Recommendation[]
+  registrations           Registration[]
   reportJobs              ReportJob[]
+  scoreboardEntries       ScoreboardEntry[]
   staffAssignments        StaffAssignment[]
   staffRoleConfigs        StaffRoleConfig[]
   staffInvitations        StaffInvitation[]
@@ -523,10 +467,6 @@ model HackathonTag {
   @@map("hackathon_tags")
 }
 
-// =============================================================================
-// TEAM FORMATION
-// =============================================================================
-
 model Team {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   hackathonId  String   @map("hackathon_id") @db.Uuid
@@ -552,15 +492,13 @@ model Team {
 }
 
 model TeamMember {
-  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  teamId   String   @map("team_id") @db.Uuid
-  userId   String   @map("user_id") @db.Uuid
+  id       String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teamId   String         @map("team_id") @db.Uuid
+  userId   String         @map("user_id") @db.Uuid
   role     TeamMemberRole @default(MEMBER)
-  joinedAt DateTime @default(now()) @map("joined_at")
-
-  // Relations
-  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime       @default(now()) @map("joined_at")
+  team     Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
   @@index([userId])
@@ -578,21 +516,15 @@ model TeamInvitation {
   expiresAt  DateTime         @map("expires_at")
   createdAt  DateTime         @default(now()) @map("created_at")
   updatedAt  DateTime         @updatedAt @map("updated_at")
-
-  // Relations
-  team     Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  sender   User @relation("InvitationSender", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver User @relation("InvitationReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  receiver   User             @relation("InvitationReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  sender     User             @relation("InvitationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  team       Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([receiverId, status])
   @@index([teamId])
   @@index([teamId, status, type])
   @@map("team_invitations")
 }
-
-// =============================================================================
-// SUBMISSIONS & JUDGING
-// =============================================================================
 
 model Submission {
   id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -621,7 +553,8 @@ model Submission {
   scores              Score[]
   judgingAssignments  JudgingAssignment[]
   submissionHistories SubmissionHistory[]
-  scoreboardEntries   ScoreboardEntry[]
+  hackathon           Hackathon           @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  team                Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([hackathonId, status])
   @@index([hackathonId, submittedAt])
@@ -629,31 +562,21 @@ model Submission {
   @@map("submissions")
 }
 
-// =============================================================================
-// SUBMISSION HISTORY (archives previous submission versions)
-// =============================================================================
 model SubmissionHistory {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  submissionId        String   @map("submission_id") @db.Uuid
-  previousTitle       String?  @map("previous_title") @db.VarChar(255)
-  previousDescription String?  @map("previous_description") @db.Text
-  previousFileUrls    String[] @default([]) @map("previous_file_urls")
-  changedAt           DateTime @default(now()) @map("changed_at")
-  changedBy           String?  @map("changed_by") @db.Uuid
-
-  // Relations
-  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  changedByUser User?      @relation("SubmissionHistoryChanger", fields: [changedBy], references: [id], onDelete: SetNull)
+  id                  String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  submissionId        String     @map("submission_id") @db.Uuid
+  previousTitle       String?    @map("previous_title") @db.VarChar(255)
+  previousDescription String?    @map("previous_description")
+  previousFileUrls    String[]   @default([]) @map("previous_file_urls")
+  changedAt           DateTime   @default(now()) @map("changed_at")
+  changedBy           String?    @map("changed_by") @db.Uuid
+  changedByUser       User?      @relation("SubmissionHistoryChanger", fields: [changedBy], references: [id])
+  submission          Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([submissionId])
   @@map("submission_histories")
 }
 
-// =============================================================================
-// SCOREBOARD ENTRIES (aggregated leaderboard rows for fast reads)
-// Populated by background aggregation jobs — serves real-time retrieval
-// without recalculating scores from raw `Score` rows on each request.
-// =============================================================================
 model ScoreboardEntry {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   hackathonId  String   @map("hackathon_id") @db.Uuid
@@ -666,8 +589,10 @@ model ScoreboardEntry {
   hackathon  Hackathon  @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
   submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
-  @@unique([hackathonId, submissionId])
-  @@map("scoreboard_entries")
+  @@unique([submissionId, judgeId])
+  @@index([hackathonId])
+  @@index([judgeId])
+  @@map("judging_assignments")
 }
 
 model JudgingAssignment {
@@ -689,39 +614,35 @@ model JudgingAssignment {
 }
 
 model JudgingCriteria {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hackathonId String   @map("hackathon_id") @db.Uuid
-  name        String   @db.VarChar(255)
-  nameAm      String?  @map("name_am") @db.VarChar(255)
-  description String?  @db.Text
-  maxScore    Int      @default(10) @map("max_score")
-  weight      Float    @default(1.0)
-  sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  // Relations
-  hackathon Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
-  scores    Score[]
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hackathonId String    @map("hackathon_id") @db.Uuid
+  name        String    @db.VarChar(255)
+  nameAm      String?   @map("name_am") @db.VarChar(255)
+  description String?
+  maxScore    Int       @default(10) @map("max_score")
+  weight      Float     @default(1.0)
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  hackathon   Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  scores      Score[]
 
   @@unique([hackathonId, name])
   @@map("judging_criteria")
 }
 
 model Score {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  submissionId    String   @map("submission_id") @db.Uuid
-  judgeId         String   @map("judge_id") @db.Uuid
-  criteriaId      String   @map("criteria_id") @db.Uuid
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  submissionId    String          @map("submission_id") @db.Uuid
+  judgeId         String          @map("judge_id") @db.Uuid
+  criteriaId      String          @map("criteria_id") @db.Uuid
   value           Float
-  comment         String?  @db.Text
-  isCommentPublic Boolean  @default(false) @map("is_comment_public")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  submission Submission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  judge      User            @relation(fields: [judgeId], references: [id], onDelete: Restrict)
-  criteria   JudgingCriteria @relation(fields: [criteriaId], references: [id], onDelete: Cascade)
+  comment         String?
+  isCommentPublic Boolean         @default(false) @map("is_comment_public")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  criteria        JudgingCriteria @relation(fields: [criteriaId], references: [id], onDelete: Cascade)
+  judge           User            @relation(fields: [judgeId], references: [id])
+  submission      Submission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@unique([submissionId, judgeId, criteriaId])
   @@index([submissionId])
@@ -730,26 +651,20 @@ model Score {
   @@map("scores")
 }
 
-// =============================================================================
-// NOTIFICATIONS & CERTIFICATES
-// =============================================================================
-
 model Notification {
-  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId      String           @map("user_id") @db.Uuid
+  id          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String                 @map("user_id") @db.Uuid
   type        NotificationType
-  title       String           @db.VarChar(255)
-  message     String           @db.Text
+  title       String                 @db.VarChar(255)
+  message     String
   metadata    Json?
-  isRead      Boolean          @default(false) @map("is_read")
-  readAt      DateTime?        @map("read_at")
-  broadcastId String?          @map("broadcast_id") @db.Uuid
-  createdAt   DateTime         @default(now()) @map("created_at")
-
-  // Relations
-  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  broadcast  NotificationBroadcast? @relation("BroadcastNotifications", fields: [broadcastId], references: [id], onDelete: SetNull)
-  deliveries NotificationDelivery[]
+  isRead      Boolean                @default(false) @map("is_read")
+  readAt      DateTime?              @map("read_at")
+  broadcastId String?                @map("broadcast_id") @db.Uuid
+  createdAt   DateTime               @default(now()) @map("created_at")
+  deliveries  NotificationDelivery[]
+  broadcast   NotificationBroadcast? @relation("BroadcastNotifications", fields: [broadcastId], references: [id])
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRead])
   @@index([userId, createdAt])
@@ -758,31 +673,29 @@ model Notification {
 }
 
 model Certificate {
-  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId          String            @map("user_id") @db.Uuid
-  hackathonId     String            @map("hackathon_id") @db.Uuid
-  title           String            @db.VarChar(255)
-  type            CertificateType   @default(CERTIFICATE)
-  awardTier       String            @default("general") @map("award_tier") @db.VarChar(50) // e.g., "participation", "winner", "runner_up"
-  certificateUrl  String?           @map("certificate_url")
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String                  @map("user_id") @db.Uuid
+  hackathonId     String                  @map("hackathon_id") @db.Uuid
+  title           String                  @db.VarChar(255)
+  type            CertificateType         @default(CERTIFICATE)
+  awardTier       String                  @default("general") @map("award_tier") @db.VarChar(50)
+  certificateUrl  String?                 @map("certificate_url")
   metadata        Json?
-  issuedAt        DateTime          @default(now()) @map("issued_at")
-  storagePath     String?           @map("storage_path")
-  mimeType        String?           @map("mime_type")
-  fileSize        Int?              @map("file_size")
+  issuedAt        DateTime                @default(now()) @map("issued_at")
+  storagePath     String?                 @map("storage_path")
+  mimeType        String?                 @map("mime_type")
+  fileSize        Int?                    @map("file_size")
   checksum        String?
-  downloadToken   String?           @map("download_token")
-  tokenExpiresAt  DateTime?         @map("token_expires_at")
-  issuanceJobId   String?           @map("issuance_job_id") @db.Uuid
-  issuedBy        String?           @map("issued_by") @db.Uuid
-  status          CertificateStatus @default(PENDING)
+  downloadToken   String?                 @map("download_token")
+  tokenExpiresAt  DateTime?               @map("token_expires_at")
+  issuanceJobId   String?                 @map("issuance_job_id") @db.Uuid
+  issuedBy        String?                 @map("issued_by") @db.Uuid
+  status          CertificateStatus       @default(PENDING)
   generationError Json?
-
-  // Relations
-  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  hackathon    Hackathon               @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
-  issuanceJob  CertificateIssuanceJob? @relation(fields: [issuanceJobId], references: [id], onDelete: SetNull)
-  issuedByUser User?                   @relation("CertificateIssuer", fields: [issuedBy], references: [id], onDelete: SetNull)
+  hackathon       Hackathon               @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  issuanceJob     CertificateIssuanceJob? @relation(fields: [issuanceJobId], references: [id])
+  issuedByUser    User?                   @relation("CertificateIssuer", fields: [issuedBy], references: [id])
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, hackathonId, type, awardTier])
   @@index([userId, issuedAt])
@@ -792,27 +705,19 @@ model Certificate {
 }
 
 model CertificateIssuanceJob {
-  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hackathonId   String?           @map("hackathon_id") @db.Uuid
-  createdBy     String?           @map("created_by") @db.Uuid
-  createdByUser User?             @relation("CertificateIssuanceJobCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  status        JobStatus @default(PENDING)
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hackathonId   String?       @map("hackathon_id") @db.Uuid
+  createdBy     String?       @map("created_by") @db.Uuid
+  status        JobStatus     @default(PENDING)
   payload       Json?
-  cancelledAt   DateTime?          @map("cancelled_at")
-  cancellationReason String?       @map("cancellation_reason")
-  createdAt     DateTime          @default(now()) @map("created_at")
-
-  // Relations
-  hackathon    Hackathon?    @relation(fields: [hackathonId], references: [id], onDelete: SetNull)
-  certificates Certificate[]
+  createdAt     DateTime      @default(now()) @map("created_at")
+  createdByUser User?         @relation("CertificateIssuanceJobCreator", fields: [createdBy], references: [id])
+  hackathon     Hackathon?    @relation(fields: [hackathonId], references: [id])
+  certificates  Certificate[]
 
   @@index([hackathonId])
   @@map("certificate_issuance_jobs")
 }
-
-// =============================================================================
-// NOTIFICATIONS: Preferences, Delivery Tracking, Templates & Broadcasts (UC0026)
-// =============================================================================
 
 model UserNotificationPreference {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -821,11 +726,9 @@ model UserNotificationPreference {
   push      Boolean  @default(true)
   sms       Boolean  @default(true)
   inApp     Boolean  @default(true) @map("in_app")
-  types     String[] @default([]) // allow-list or explicit opt-out list
+  types     String[] @default([])
   updatedAt DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_notification_preferences")
 }
@@ -833,16 +736,14 @@ model UserNotificationPreference {
 model NotificationDelivery {
   id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   notificationId String          @map("notification_id") @db.Uuid
-  channel        DeliveryChannel // e.g., EMAIL,SMS,PUSH,IN_APP
+  channel        DeliveryChannel
   status         DeliveryStatus  @default(PENDING)
   attempts       Int             @default(0)
   lastError      Json?
   sentAt         DateTime?
   nextAttemptAt  DateTime?
   deliveredAt    DateTime?
-
-  // Relations
-  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  notification   Notification    @relation(fields: [notificationId], references: [id], onDelete: Cascade)
 
   @@index([notificationId])
   @@index([status])
@@ -853,9 +754,9 @@ model NotificationDelivery {
 model NotificationTemplate {
   id         String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name       String                  @db.VarChar(255)
-  channel    DeliveryChannel // channel this template targets
+  channel    DeliveryChannel
   subject    String?
-  body       String                  @db.Text
+  body       String
   metadata   Json?
   createdAt  DateTime                @default(now()) @map("created_at")
   broadcasts NotificationBroadcast[]
@@ -865,37 +766,22 @@ model NotificationTemplate {
 }
 
 model NotificationBroadcast {
-  id                 String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hackathonId        String?                     @map("hackathon_id") @db.Uuid
-  templateId         String?                     @map("template_id") @db.Uuid
-  triggerRule        String?                     @map("trigger_rule")
-  title              String?                     @db.VarChar(255)
-  message            String?                     @db.Text
-  type               NotificationType            @default(ANNOUNCEMENT)
-  status             NotificationBroadcastStatus @default(QUEUED)
-  createdBy          String?                     @map("created_by") @db.Uuid
-  createdByUser      User?                       @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-  scheduledAt        DateTime?                   @map("scheduled_at")
-  sentAt             DateTime?                   @map("sent_at")
-  cancelledAt        DateTime?                   @map("cancelled_at")
-  cancellationReason String?                     @map("cancellation_reason") @db.Text
-  error              Json?
-  payload            Json?
-  createdAt          DateTime                    @default(now()) @map("created_at")
-
-  // Relations
-  hackathon     Hackathon?            @relation(fields: [hackathonId], references: [id], onDelete: SetNull)
-  template      NotificationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hackathonId   String?               @map("hackathon_id") @db.Uuid
+  templateId    String?               @map("template_id") @db.Uuid
+  triggerRule   String?               @map("trigger_rule")
+  createdBy     String?               @map("created_by") @db.Uuid
+  scheduledAt   DateTime?             @map("scheduled_at")
+  payload       Json?
+  createdAt     DateTime              @default(now()) @map("created_at")
+  createdByUser User?                 @relation(fields: [createdBy], references: [id])
+  hackathon     Hackathon?            @relation(fields: [hackathonId], references: [id])
+  template      NotificationTemplate? @relation(fields: [templateId], references: [id])
   notifications Notification[]        @relation("BroadcastNotifications")
 
   @@index([triggerRule])
-  @@index([hackathonId, status])
   @@map("notification_broadcasts")
 }
-
-// =============================================================================
-// ANALYTICS: precomputed snapshots and job tracking for organizer dashboards
-// =============================================================================
 
 model EventAnalyticsSnapshot {
   id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -907,12 +793,10 @@ model EventAnalyticsSnapshot {
   computedDurationMs Int?          @map("computed_duration_ms")
   expiresAt          DateTime?     @map("expires_at")
   computedBy         String?       @map("computed_by") @db.Uuid
-  computedByUser     User?         @relation("AnalyticsSnapshotComputer", fields: [computedBy], references: [id], onDelete: SetNull)
   sourceJobId        String?       @map("source_job_id") @db.Uuid
-  sourceJob          AnalyticsJob? @relation(fields: [sourceJobId], references: [id], onDelete: SetNull)
-
-  // Relations
-  hackathon Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  computedByUser     User?         @relation("AnalyticsSnapshotComputer", fields: [computedBy], references: [id])
+  hackathon          Hackathon     @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  sourceJob          AnalyticsJob? @relation(fields: [sourceJobId], references: [id])
 
   @@index([hackathonId, computedAt])
   @@index([expiresAt])
@@ -920,38 +804,30 @@ model EventAnalyticsSnapshot {
 }
 
 model AnalyticsJob {
-  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hackathonId   String?            @map("hackathon_id") @db.Uuid
-  createdBy     String?            @map("created_by") @db.Uuid
-  createdByUser User?              @relation("AnalyticsJobCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  status        JobStatus @default(PENDING)
+  id            String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hackathonId   String?                  @map("hackathon_id") @db.Uuid
+  createdBy     String?                  @map("created_by") @db.Uuid
+  status        JobStatus                @default(PENDING)
   payload       Json?
   scheduledAt   DateTime?
-  priority      Int                @default(0)
-  attempts      Int                @default(0)
+  priority      Int                      @default(0)
+  attempts      Int                      @default(0)
   timeoutAt     DateTime?
-  lockedBy      String?            @map("locked_by") @db.Uuid
-  lockedAt      DateTime?          @map("locked_at")
+  lockedBy      String?                  @map("locked_by") @db.Uuid
+  lockedAt      DateTime?                @map("locked_at")
   startedAt     DateTime?
   completedAt   DateTime?
   error         Json?
-  cancelledAt   DateTime?          @map("cancelled_at")
-  cancellationReason String?       @map("cancellation_reason")
-  createdAt     DateTime           @default(now()) @map("created_at")
-
-  // Relations
-  hackathon Hackathon?               @relation(fields: [hackathonId], references: [id], onDelete: SetNull)
-  snapshots EventAnalyticsSnapshot[]
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  createdByUser User?                    @relation("AnalyticsJobCreator", fields: [createdBy], references: [id])
+  hackathon     Hackathon?               @relation(fields: [hackathonId], references: [id])
+  snapshots     EventAnalyticsSnapshot[]
 
   @@index([hackathonId, status])
   @@index([scheduledAt, status])
   @@index([lockedBy, lockedAt])
   @@map("analytics_jobs")
 }
-
-// =============================================================================
-// REPORTING: Report job tracking and generated file metadata (UC0029)
-// =============================================================================
 
 model ReportFile {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -965,9 +841,7 @@ model ReportFile {
   expiresAt      DateTime? @map("expires_at")
   metadata       Json?
   createdAt      DateTime  @default(now()) @map("created_at")
-
-  // Relations
-  job ReportJob @relation("ReportJobFile", fields: [jobId], references: [id], onDelete: Cascade)
+  job            ReportJob @relation("ReportJobFile", fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([downloadToken])
   @@index([expiresAt])
@@ -978,10 +852,9 @@ model ReportJob {
   id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   hackathonId        String?      @map("hackathon_id") @db.Uuid
   createdBy          String?      @map("created_by") @db.Uuid
-  createdByUser      User?        @relation("ReportJobCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   status             ReportStatus @default(PENDING)
   format             ReportFormat @map("format")
-  parameters         Json?        @map("parameters") // criteria (filters, date range, fields)
+  parameters         Json?        @map("parameters")
   scheduledAt        DateTime?
   priority           Int          @default(0)
   attempts           Int          @default(0)
@@ -994,10 +867,9 @@ model ReportJob {
   cancelledAt        DateTime?    @map("cancelled_at")
   cancellationReason String?      @map("cancellation_reason")
   createdAt          DateTime     @default(now()) @map("created_at")
-
-  // Relations
-  hackathon Hackathon?  @relation(fields: [hackathonId], references: [id], onDelete: SetNull)
-  file      ReportFile? @relation("ReportJobFile")
+  file               ReportFile?  @relation("ReportJobFile")
+  createdByUser      User?        @relation("ReportJobCreator", fields: [createdBy], references: [id])
+  hackathon          Hackathon?   @relation(fields: [hackathonId], references: [id])
 
   @@index([hackathonId, status])
   @@index([scheduledAt, status])
@@ -1005,25 +877,21 @@ model ReportJob {
   @@map("report_jobs")
 }
 
-// =============================================================================
-// ADMIN INVITATIONS (UC0030)
-// =============================================================================
-
 model AdminInvitation {
   id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email              String           @db.VarChar(255)
   role               UserRole         @default(ORGANIZER)
   token              String           @unique
   invitedBy          String?          @map("invited_by") @db.Uuid
-  invitedByUser      User?            @relation("AdminInvitationSender", fields: [invitedBy], references: [id], onDelete: SetNull)
   expiresAt          DateTime         @map("expires_at")
   acceptedAt         DateTime?        @map("accepted_at")
   acceptedBy         String?          @map("accepted_by") @db.Uuid
-  acceptedByUser     User?            @relation("AdminInvitationAccepter", fields: [acceptedBy], references: [id], onDelete: SetNull)
   status             InvitationStatus @default(PENDING)
   cancelledAt        DateTime?        @map("cancelled_at")
   cancellationReason String?          @map("cancellation_reason")
   createdAt          DateTime         @default(now()) @map("created_at")
+  acceptedByUser     User?            @relation("AdminInvitationAccepter", fields: [acceptedBy], references: [id])
+  invitedByUser      User?            @relation("AdminInvitationSender", fields: [invitedBy], references: [id])
 
   @@index([email])
   @@index([invitedBy])
@@ -1031,33 +899,25 @@ model AdminInvitation {
   @@map("admin_invitations")
 }
 
-// =============================================================================
-// ARCHIVAL: Jobs and records for archiving event metadata and text-only data
-// =============================================================================
-
 model ArchiveJob {
-  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hackathonId String?            @map("hackathon_id") @db.Uuid
-  createdBy   String?            @map("created_by") @db.Uuid
-  status      JobStatus @default(PENDING)
-  payload     Json?
-  scheduledAt DateTime?
-  priority    Int                @default(0)
-  attempts    Int                @default(0)
-  metadata    Json?
-  timeoutAt   DateTime?
-  lockedBy    String?            @map("locked_by") @db.Uuid
-  lockedAt    DateTime?          @map("locked_at")
-  startedAt   DateTime?
-  completedAt DateTime?
-  error       Json?
-  cancelledAt DateTime?            @map("cancelled_at")
-  cancellationReason String?       @map("cancellation_reason")
-  createdAt   DateTime           @default(now()) @map("created_at")
-
-  // Relations
-  hackathon     Hackathon? @relation(fields: [hackathonId], references: [id], onDelete: SetNull)
-  createdByUser User?      @relation("ArchiveJobCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hackathonId   String?         @map("hackathon_id") @db.Uuid
+  createdBy     String?         @map("created_by") @db.Uuid
+  status        JobStatus       @default(PENDING)
+  payload       Json?
+  scheduledAt   DateTime?
+  priority      Int             @default(0)
+  attempts      Int             @default(0)
+  metadata      Json?
+  timeoutAt     DateTime?
+  lockedBy      String?         @map("locked_by") @db.Uuid
+  lockedAt      DateTime?       @map("locked_at")
+  startedAt     DateTime?
+  completedAt   DateTime?
+  error         Json?
+  createdAt     DateTime        @default(now()) @map("created_at")
+  createdByUser User?           @relation("ArchiveJobCreator", fields: [createdBy], references: [id])
+  hackathon     Hackathon?      @relation(fields: [hackathonId], references: [id])
   records       ArchiveRecord[]
 
   @@index([hackathonId, status])
@@ -1069,7 +929,7 @@ model ArchiveJob {
 model ArchiveRecord {
   id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   jobId          String        @map("job_id") @db.Uuid
-  entity         String        @db.VarChar(100) // e.g., "discussion", "comment"
+  entity         String        @db.VarChar(100)
   entityId       String        @map("entity_id") @db.Uuid
   storagePath    String?       @map("storage_path")
   mimeType       String?       @map("mime_type")
@@ -1085,10 +945,8 @@ model ArchiveRecord {
   archivedBy     String?       @map("archived_by") @db.Uuid
   expiresAt      DateTime?
   createdAt      DateTime      @default(now()) @map("created_at")
-
-  // Relations
-  job            ArchiveJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  archivedByUser User?      @relation("ArchiveRecordArchiver", fields: [archivedBy], references: [id], onDelete: SetNull)
+  archivedByUser User?         @relation("ArchiveRecordArchiver", fields: [archivedBy], references: [id])
+  job            ArchiveJob    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId])
   @@index([entity, entityId])
@@ -1097,18 +955,14 @@ model ArchiveRecord {
   @@map("archive_records")
 }
 
-// =============================================================================
-// SEARCH: unified search documents for current + archived metadata (UC0032)
-// =============================================================================
-
 model SearchDocument {
   id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  entity     String       @db.VarChar(100) // e.g., "hackathon", "submission", "discussion"
+  entity     String       @db.VarChar(100)
   entityId   String       @map("entity_id") @db.Uuid
   source     SearchSource @default(CURRENT)
-  title      String?      @db.VarChar(500) // display title for search results
-  url        String?      @db.Text         // deep-link to the original entity
-  searchText String       @db.Text         // concatenated searchable text
+  title      String?      @db.VarChar(500)
+  url        String?
+  searchText String
   metadata   Json?
   indexedAt  DateTime     @default(now()) @map("indexed_at")
 
@@ -1117,43 +971,33 @@ model SearchDocument {
   @@map("search_documents")
 }
 
-// =============================================================================
-// SEARCH LOG: query tracking for analytics, AF1 (no results), and AF2 (latency)
-// =============================================================================
-
 model SearchLog {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  query        String   @db.Text
-  actorId      String?  @map("actor_id") @db.Uuid   // null for public/anonymous users
-  resultCount  Int      @default(0) @map("result_count")
-  source       SearchSource?                         // CURRENT, ARCHIVE, or null = both
-  durationMs   Int?     @map("duration_ms")          // AF2: detect slow archive retrievals
-  ipAddress    String?  @map("ip_address") @db.VarChar(45)
-  createdAt    DateTime @default(now()) @map("created_at")
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  query       String
+  actorId     String?       @map("actor_id") @db.Uuid
+  resultCount Int           @default(0) @map("result_count")
+  source      SearchSource?
+  durationMs  Int?          @map("duration_ms")
+  ipAddress   String?       @map("ip_address") @db.VarChar(45)
+  createdAt   DateTime      @default(now()) @map("created_at")
 
   @@index([actorId])
   @@index([createdAt])
-  @@index([resultCount])  // quickly find zero-result queries (AF1 analytics)
+  @@index([resultCount])
   @@map("search_logs")
 }
-
-// =============================================================================
-// AUDIT & LOGGING
-// =============================================================================
 
 model AuditLog {
   id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   actorId   String?     @map("actor_id") @db.Uuid
   action    AuditAction
-  entity    String      @db.VarChar(100) // e.g., "hackathon", "score", "user"
+  entity    String      @db.VarChar(100)
   entityId  String?     @map("entity_id") @db.Uuid
   details   Json?
   ipAddress String?     @map("ip_address") @db.VarChar(45)
-  userAgent String?     @map("user_agent") @db.Text
+  userAgent String?     @map("user_agent")
   createdAt DateTime    @default(now()) @map("created_at")
-
-  // Relations
-  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actor     User?       @relation(fields: [actorId], references: [id])
 
   @@index([actorId])
   @@index([entity, entityId])
@@ -1181,50 +1025,42 @@ model StaffRoleConfig {
 }
 
 model StaffAssignment {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId      String    @map("user_id") @db.Uuid
-  hackathonId String    @map("hackathon_id") @db.Uuid
-  staffRole   StaffRole @map("staff_role")
-  isLead      Boolean   @default(false) @map("is_lead")      // UC0033 AF2: identifies Lead Organizer
-  isActive    Boolean   @default(true) @map("is_active")     // UC0033 AF1: soft-revoke support
-  revokedAt   DateTime? @map("revoked_at")
-  revokedBy   String?   @map("revoked_by") @db.Uuid
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-
-  // Relations
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  hackathonId   String    @map("hackathon_id") @db.Uuid
+  staffRole     StaffRole @map("staff_role")
+  isLead        Boolean   @default(false) @map("is_lead")
+  isActive      Boolean   @default(true) @map("is_active")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedBy     String?   @map("revoked_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
   hackathon     Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
-  revokedByUser User?     @relation("StaffAssignmentRevoker", fields: [revokedBy], references: [id], onDelete: SetNull)
+  revokedByUser User?     @relation("StaffAssignmentRevoker", fields: [revokedBy], references: [id])
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, hackathonId, staffRole]) // allow multiple roles per event
+  @@unique([userId, hackathonId, staffRole])
   @@index([hackathonId])
   @@index([hackathonId, isActive])
   @@map("staff_assignments")
 }
-
-// =============================================================================
-// STAFF INVITATIONS: event-scoped secure invitations for staff (UC0033)
-// =============================================================================
 
 model StaffInvitation {
   id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   hackathonId    String           @map("hackathon_id") @db.Uuid
   email          String           @db.VarChar(255)
   staffRole      StaffRole        @map("staff_role")
-  token          String           @unique                     // secure one-time invitation token
+  token          String           @unique
   status         InvitationStatus @default(PENDING)
   invitedBy      String?          @map("invited_by") @db.Uuid
   expiresAt      DateTime         @map("expires_at")
   acceptedAt     DateTime?        @map("accepted_at")
   acceptedBy     String?          @map("accepted_by") @db.Uuid
-  message        String?          @db.Text                    // optional personal note from Lead
+  message        String?
   createdAt      DateTime         @default(now()) @map("created_at")
-
-  // Relations
-  hackathon      Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
-  invitedByUser  User?     @relation("StaffInvitationSender", fields: [invitedBy], references: [id], onDelete: SetNull)
-  acceptedByUser User?     @relation("StaffInvitationAccepter", fields: [acceptedBy], references: [id], onDelete: SetNull)
+  acceptedByUser User?            @relation("StaffInvitationAccepter", fields: [acceptedBy], references: [id])
+  hackathon      Hackathon        @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  invitedByUser  User?            @relation("StaffInvitationSender", fields: [invitedBy], references: [id])
 
   @@index([hackathonId])
   @@index([email])
@@ -1232,16 +1068,12 @@ model StaffInvitation {
   @@map("staff_invitations")
 }
 
-// =============================================================================
-// LOCALIZATION (General-purpose i18n key-value store)
-// =============================================================================
-
 model LocalizedString {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   key          String    @db.VarChar(255)
-  locale       String    @db.VarChar(5) // "en" or "am"
-  value        String    @db.Text
-  context      String?   @db.VarChar(100) // e.g., "ui", "email_template", "badge"
+  locale       String    @db.VarChar(5)
+  value        String
+  context      String?   @db.VarChar(100)
   isMissing    Boolean   @default(false) @map("is_missing")
   lastAccessed DateTime? @map("last_accessed")
   createdAt    DateTime  @default(now()) @map("created_at")
@@ -1252,37 +1084,25 @@ model LocalizedString {
   @@map("localized_strings")
 }
 
-// =============================================================================
-// BOOKMARKS (User ↔ Organization favourites — UC0007)
-// =============================================================================
-
 model Bookmark {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at")
-
-  // Relations
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, organizationId])
   @@index([organizationId])
   @@map("bookmarks")
 }
 
-// =============================================================================
-// MENTOR-TEAM ASSIGNMENT & INTERACTION LOGGING (FR-COL-03)
-// =============================================================================
-
 model MentorAssignment {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  mentorId   String   @map("mentor_id") @db.Uuid
-  teamId     String   @map("team_id") @db.Uuid
-  isActive   Boolean  @default(true) @map("is_active")
-  assignedAt DateTime @default(now()) @map("assigned_at")
-
-  // Relations
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mentorId     String              @map("mentor_id") @db.Uuid
+  teamId       String              @map("team_id") @db.Uuid
+  isActive     Boolean             @default(true) @map("is_active")
+  assignedAt   DateTime            @default(now()) @map("assigned_at")
   mentor       User                @relation(fields: [mentorId], references: [id], onDelete: Cascade)
   team         Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
   interactions MentorInteraction[]
@@ -1294,36 +1114,29 @@ model MentorAssignment {
 }
 
 model MentorInteraction {
-  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  mentorAssignmentId String   @map("mentor_assignment_id") @db.Uuid
-  notes              String   @db.Text
-  durationMinutes    Int?     @map("duration_minutes")
-  createdAt          DateTime @default(now()) @map("created_at")
-
-  // Relations
-  mentorAssignment MentorAssignment @relation(fields: [mentorAssignmentId], references: [id], onDelete: Cascade)
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mentorAssignmentId String           @map("mentor_assignment_id") @db.Uuid
+  notes              String
+  durationMinutes    Int?             @map("duration_minutes")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  mentorAssignment   MentorAssignment @relation(fields: [mentorAssignmentId], references: [id], onDelete: Cascade)
 
   @@index([mentorAssignmentId])
   @@map("mentor_interactions")
 }
 
-// =============================================================================
-// MENTOR REQUESTS (meeting/message flow between participant and mentor)
-// =============================================================================
 model MentorRequest {
   id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   requesterId String              @map("requester_id") @db.Uuid
   mentorId    String              @map("mentor_id") @db.Uuid
   teamId      String?             @map("team_id") @db.Uuid
-  message     String?             @db.Text
+  message     String?
   preferredAt DateTime?           @map("preferred_at")
   status      MentorRequestStatus @default(PENDING)
   createdAt   DateTime            @default(now()) @map("created_at")
-
-  // Relations
-  requester User  @relation("MentorRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)
-  mentor    User  @relation("MentorRequestMentor", fields: [mentorId], references: [id], onDelete: Cascade)
-  team      Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  mentor      User                @relation("MentorRequestMentor", fields: [mentorId], references: [id], onDelete: Cascade)
+  requester   User                @relation("MentorRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  team        Team?               @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([mentorId])
   @@index([requesterId])
@@ -1363,74 +1176,61 @@ model MentorSession {
 // =============================================================================
 
 model Organization {
-  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name               String   @db.VarChar(255)
-  nameAm             String?  @map("name_am") @db.VarChar(255)
-  slug               String   @unique @db.VarChar(255)
-  description        String?  @db.Text
-  descriptionAm      String?  @map("description_am") @db.Text
-  logoUrl            String?  @map("logo_url")
-  websiteUrl         String?  @map("website_url")
-  contactEmail       String?  @map("contact_email")
-  verificationDocUrl String?  @map("verification_doc_url") // UC0001: institutional proof (e.g., university ID, certificate)
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String               @db.VarChar(255)
+  nameAm             String?              @map("name_am") @db.VarChar(255)
+  slug               String               @unique @db.VarChar(255)
+  description        String?
+  descriptionAm      String?              @map("description_am")
+  logoUrl            String?              @map("logo_url")
+  websiteUrl         String?              @map("website_url")
+  contactEmail       String?              @map("contact_email")
+  verificationDocUrl String?              @map("verification_doc_url")
   city               String?
-  region             String?  @db.VarChar(100)
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  members    OrganizationMember[]
-  hackathons Hackathon[]
-  bookmarks  Bookmark[]
+  region             String?              @db.VarChar(100)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  bookmarks          Bookmark[]
+  hackathons         Hackathon[]
+  members            OrganizationMember[]
 
   @@index([region])
   @@map("organizations")
 }
 
 model OrganizationMember {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
   role           OrgMemberRole @default(MEMBER)
-  joinedAt       DateTime @default(now()) @map("joined_at")
-
-  // Relations
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt       DateTime      @default(now()) @map("joined_at")
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, userId])
   @@index([userId])
   @@map("organization_members")
 }
 
-// =============================================================================
-// COLLABORATIVE DISCUSSIONS (community knowledge sharing & team formation)
-// =============================================================================
-
 model Discussion {
-  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hackathonId String           @map("hackathon_id") @db.Uuid
-  authorId    String?          @map("author_id") @db.Uuid
-  title       String           @db.VarChar(255)
-  body        String           @db.Text
-  category    String           @default("general") @db.VarChar(50) // e.g., "general", "team_formation", "help", "showcase"
-  isPinned    Boolean          @default(false) @map("is_pinned")
-  isLocked    Boolean          @default(false) @map("is_locked")
-  status      DiscussionStatus @default(PUBLISHED) @map("status")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-  // Archival metadata (UC0031)
-  isArchived  Boolean          @default(false) @map("is_archived")
-  archivedAt  DateTime?        @map("archived_at")
-  archivedBy  String?          @map("archived_by") @db.Uuid
-  deletedAt   DateTime?        @map("deleted_at")
-  deletedBy   String?          @map("deleted_by") @db.Uuid
-
-  // Relations
-  hackathon      Hackathon           @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
-  author         User?               @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  archivedByUser User?               @relation("DiscussionArchiver", fields: [archivedBy], references: [id], onDelete: SetNull)
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hackathonId    String              @map("hackathon_id") @db.Uuid
+  authorId       String?             @map("author_id") @db.Uuid
+  title          String              @db.VarChar(255)
+  body           String
+  category       String              @default("general") @db.VarChar(50)
+  isPinned       Boolean             @default(false) @map("is_pinned")
+  isLocked       Boolean             @default(false) @map("is_locked")
+  status         DiscussionStatus    @default(PUBLISHED) @map("status")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  isArchived     Boolean             @default(false) @map("is_archived")
+  archivedAt     DateTime?           @map("archived_at")
+  archivedBy     String?             @map("archived_by") @db.Uuid
   comments       DiscussionComment[]
+  archivedByUser User?               @relation("DiscussionArchiver", fields: [archivedBy], references: [id])
+  author         User?               @relation(fields: [authorId], references: [id])
+  hackathon      Hackathon           @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
 
   @@index([hackathonId, category])
   @@index([hackathonId, isPinned])
@@ -1439,79 +1239,28 @@ model Discussion {
 }
 
 model DiscussionComment {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  discussionId String   @map("discussion_id") @db.Uuid
-  authorId     String?  @map("author_id") @db.Uuid
-  parentId     String?  @map("parent_id") @db.Uuid
-  body         String   @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  // Relations
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  discussionId   String              @map("discussion_id") @db.Uuid
+  authorId       String?             @map("author_id") @db.Uuid
+  parentId       String?             @map("parent_id") @db.Uuid
+  body           String
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  status         DiscussionStatus    @default(PUBLISHED) @map("status")
+  isArchived     Boolean             @default(false) @map("is_archived")
+  archivedAt     DateTime?           @map("archived_at")
+  archivedBy     String?             @map("archived_by") @db.Uuid
+  archivedByUser User?               @relation("DiscussionCommentArchiver", fields: [archivedBy], references: [id])
+  author         User?               @relation(fields: [authorId], references: [id])
   discussion     Discussion          @relation(fields: [discussionId], references: [id], onDelete: Cascade)
-  author         User?               @relation(fields: [authorId], references: [id], onDelete: SetNull)
   parent         DiscussionComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies        DiscussionComment[] @relation("CommentReplies")
-  archivedByUser User?               @relation("DiscussionCommentArchiver", fields: [archivedBy], references: [id], onDelete: SetNull)
-  status         DiscussionStatus    @default(PUBLISHED) @map("status")
-  // Archival metadata (UC0031)
-  isArchived Boolean             @default(false) @map("is_archived")
-  archivedAt DateTime?           @map("archived_at")
-  archivedBy String?             @map("archived_by") @db.Uuid
-  deletedAt  DateTime?           @map("deleted_at")
-  deletedBy  String?             @map("deleted_by") @db.Uuid
 
   @@index([discussionId])
   @@index([authorId])
   @@index([parentId])
   @@map("discussion_comments")
 }
-
-model DiscussionFlag {
-  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reporterId   String               @map("reporter_id") @db.Uuid
-  discussionId String?              @map("discussion_id") @db.Uuid
-  commentId    String?              @map("comment_id") @db.Uuid
-  reason       String               @db.VarChar(100)
-  details      String?              @db.Text
-  status       ModerationFlagStatus @default(PENDING)
-  reviewedBy   String?              @map("reviewed_by") @db.Uuid
-  reviewedAt   DateTime?            @map("reviewed_at")
-  createdAt    DateTime             @default(now()) @map("created_at")
-
-  @@index([discussionId])
-  @@index([commentId])
-  @@index([reporterId])
-  @@index([status])
-  @@map("discussion_flags")
-}
-
-model StoredFile {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  storageKey  String    @unique @map("storage_key") @db.Text
-  folder      String    @db.VarChar(60)
-  entityId    String    @map("entity_id") @db.Uuid
-  filename    String    @db.VarChar(255)
-  ownerId     String?   @map("owner_id") @db.Uuid
-  mimeType    String?   @map("mime_type")
-  fileSize    Int?      @map("file_size")
-  checksum    String?
-  accessLevel String    @default("PUBLIC") @map("access_level") @db.VarChar(30)
-  isDeleted   Boolean   @default(false) @map("is_deleted")
-  deletedAt   DateTime? @map("deleted_at")
-  deletedBy   String?   @map("deleted_by") @db.Uuid
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-
-  @@index([folder, entityId])
-  @@index([ownerId])
-  @@index([isDeleted])
-  @@map("stored_files")
-}
-
-// =============================================================================
-// PASSWORD RESET (UC0002 Forgot Password Flow)
-// =============================================================================
 
 model PasswordResetToken {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -1520,9 +1269,7 @@ model PasswordResetToken {
   expiresAt DateTime @map("expires_at")
   attempts  Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at")
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -1579,9 +1326,6 @@ model Session {
   @@map("sessions")
 }
 
-// =============================================================================
-// REGISTRATIONS (tracks user registrations for hackathons independent of teams)
-// =============================================================================
 model Registration {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId      String   @map("user_id") @db.Uuid
@@ -1600,47 +1344,212 @@ model Registration {
   @@map("registrations")
 }
 
-// =============================================================================
-// EVENT FEEDBACK (user-submitted feedback per hackathon)
-// =============================================================================
 model EventFeedback {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId        String   @map("user_id") @db.Uuid
-  hackathonId   String   @map("hackathon_id") @db.Uuid
-  orgRating     Int      @map("org_rating")
-  rulesRating   Int      @map("rules_rating")
-  judgingRating Int      @map("judging_rating")
-  comment       String?  @db.Text
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  hackathon Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  hackathonId   String    @map("hackathon_id") @db.Uuid
+  orgRating     Int       @map("org_rating")
+  rulesRating   Int       @map("rules_rating")
+  judgingRating Int       @map("judging_rating")
+  comment       String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  hackathon     Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, hackathonId])
   @@map("event_feedbacks")
 }
 
-// =============================================================================
-// RECOMMENDATIONS (content-based personalized event suggestions)
-// =============================================================================
 model Recommendation {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId      String    @map("user_id") @db.Uuid
   hackathonId String    @map("hackathon_id") @db.Uuid
-  score       Float     // relevance score from the recommendation engine
-  reason      Json?     // explanation metadata (e.g., matched skills, similar past events)
+  score       Float
+  reason      Json?
   isViewed    Boolean   @default(false) @map("is_viewed")
   isDismissed Boolean   @default(false) @map("is_dismissed")
   createdAt   DateTime  @default(now()) @map("created_at")
   expiresAt   DateTime? @map("expires_at")
-
-  // Relations
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  hackathon Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  hackathon   Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, hackathonId])
   @@index([userId, isViewed])
   @@index([userId, score])
   @@index([hackathonId])
   @@map("recommendations")
+}
+
+enum UserRole {
+  PARTICIPANT
+  ORGANIZER
+  JUDGE
+  MENTOR
+  ADMIN
+}
+
+enum HackathonStatus {
+  DRAFT
+  REGISTRATION_OPEN
+  REGISTRATION_CLOSED
+  IN_PROGRESS
+  JUDGING
+  COMPLETED
+  ARCHIVED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  SCORED
+}
+
+enum NotificationType {
+  DEADLINE_REMINDER
+  TEAM_INVITE
+  SCORE_PUBLISHED
+  CERTIFICATE_ISSUED
+  ANNOUNCEMENT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  SCORE_SUBMIT
+  SCORE_OVERRIDE
+  VIEW_SCOREBOARD
+  MISSING_TRANSLATION
+  CREATE_ADMIN
+  SUSPEND_ACCOUNT
+  REVOKE_SESSION
+  EXPORT_LOGS
+  PROVISION_ADMIN_INVITE
+}
+
+enum StaffRole {
+  JUDGE
+  MENTOR
+  TECHNICAL_LEAD
+  LOGISTICS
+  COMMUNICATIONS
+  FINANCE
+}
+
+enum DiscussionStatus {
+  PUBLISHED
+  UNDER_REVIEW
+}
+
+enum MentorRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+enum JudgingPhase {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETE
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ScoreboardType {
+  HIDDEN
+  REALTIME
+  FINAL_ONLY
+}
+
+enum FeedbackVisibility {
+  HIDDEN
+  RELEASED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum DeliveryChannel {
+  EMAIL
+  SMS
+  PUSH
+  IN_APP
+}
+
+enum CertificateStatus {
+  PENDING
+  GENERATED
+  FAILED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum SnapshotType {
+  DAILY
+  ON_DEMAND
+}
+
+enum ArchiveStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum SearchSource {
+  CURRENT
+  ARCHIVE
+}
+
+enum ReportFormat {
+  CSV
+  PDF
+  JSON
+  XLSX
+}
+
+enum ReportStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum CertificateType {
+  CERTIFICATE
+  BADGE
+}
+
+enum TeamMemberRole {
+  LEADER
+  MEMBER
+}
+
+enum OrgMemberRole {
+  ADMIN
+  MEMBER
 }
