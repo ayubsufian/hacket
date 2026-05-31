@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
@@ -8,9 +9,13 @@ export default {
       },
       colors: {
         page: '#f7f8f9',
+        'page-dark': '#0f172a',
         surface: '#ffffff',
+        'surface-dark': '#1e293b',
         'surface-raised': '#fafbfc',
+        'surface-raised-dark': '#334155',
         border: '#e5e7eb',
+        'border-dark': '#475569',
         accent: {
           50: '#f0fdf4',
           100: '#dcfce7',

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import AppShell from './components/layout/AppShell'
 import { AuthProvider } from './contexts/AuthContext'
 import { LanguageProvider } from './contexts/LanguageContext'
+import { ThemeProvider } from './contexts/ThemeContext'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 
 // Pages
@@ -24,9 +25,10 @@ import AcceptInvitationPage from './pages/AcceptInvitationPage'
 function App() {
   return (
     <BrowserRouter>
-      <LanguageProvider>
-        <AuthProvider>
-          <AppShell>
+      <ThemeProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <AppShell>
             <Routes>
               {/* Public */}
               <Route path="/" element={<LandingPage />} />
@@ -52,6 +54,7 @@ function App() {
           </AppShell>
         </AuthProvider>
       </LanguageProvider>
+      </ThemeProvider>
     </BrowserRouter>
   )
 }

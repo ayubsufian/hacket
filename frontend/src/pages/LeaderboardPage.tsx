@@ -18,7 +18,7 @@ export default function LeaderboardPage() {
             .then(r => {
                 if (!active) return
                 setEvents(r.data)
-                if (r.data.length > 0) setSelectedEvent(r.data[0].id)
+                if (r.data?.length > 0) setSelectedEvent(r.data[0].id)
                 setError(null)
             })
             .catch(err => { if (active) setError(err instanceof Error ? err.message : 'Failed to connect') })
@@ -64,7 +64,7 @@ export default function LeaderboardPage() {
                     <p className="mt-1 text-sm text-slate-500">View score results for the currently selected hackathon.</p>
                 </div>
                 <select value={selectedEvent} onChange={e => setSelectedEvent(e.target.value)} className="input-field !w-auto min-w-[240px] shadow-sm">
-                    {events.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
+                    {events?.map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}
                 </select>
             </div>
 
@@ -74,7 +74,7 @@ export default function LeaderboardPage() {
                         <Loader2 size={32} className="animate-spin mb-4 text-accent-500" />
                         <p>Compiling scores...</p>
                     </div>
-                ) : entries.length === 0 ? (
+                ) : entries?.length === 0 ? (
                     <div className="py-20 text-center text-gray-500 flex flex-col items-center">
                         <Award size={48} className="text-gray-300 mb-4" />
                         <p className="text-lg font-medium text-gray-900">No rankings yet</p>
@@ -91,7 +91,7 @@ export default function LeaderboardPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {entries.map((e, i) => {
+                            {entries?.map((e, i) => {
                                 const rank = e.rank ?? i + 1
                                 return (
                                     <tr key={e.submissionId || i} className="hover:bg-amber-50/30 transition-colors group">

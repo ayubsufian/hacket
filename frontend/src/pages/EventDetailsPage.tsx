@@ -89,7 +89,7 @@ export default function EventDetailsPage() {
           {/* Badges on image */}
           <div className="absolute top-4 left-4 flex items-center gap-2">
             <span className={`badge shadow ${isRegOpen ? 'badge-green' : event.status === 'IN_PROGRESS' ? 'badge-blue' : 'badge-gray'}`}>
-              {event.status.replace(/_/g, ' ')}
+              {event.status?.replace(/_/g, ' ') || '—'}
             </span>
             {event.isVirtual ? (
               <span className="flex items-center gap-1 text-xs font-semibold text-white bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full">
@@ -112,7 +112,7 @@ export default function EventDetailsPage() {
             {/* Tags */}
             {event.tags && event.tags.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap">
-                {event.tags.slice(0, 5).map(tag => (
+                {(event.tags ?? []).slice(0, 5).map(tag => (
                   <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
                     {tag}
                   </span>
@@ -160,7 +160,7 @@ export default function EventDetailsPage() {
                 <div className="mt-0.5"><Calendar size={18} className="text-gray-400" /></div>
                 <div>
                   <p className="text-sm font-medium text-gray-900">Event Start</p>
-                  <p className="text-sm text-gray-500">{new Date(event.eventStart).toLocaleString()}</p>
+                  <p className="text-sm text-gray-500">{event.eventStart ? new Date(event.eventStart).toLocaleString() : '—'}</p>
                 </div>
               </li>
               <li className="flex gap-3">
@@ -190,11 +190,11 @@ export default function EventDetailsPage() {
             <ul className="space-y-4">
               <li className="flex justify-between items-center text-sm border-b border-gray-200 pb-2">
                 <span className="text-gray-600">Registration Ends</span>
-                <span className="font-medium text-gray-900">{new Date(event.registrationEnd).toLocaleDateString()}</span>
+                <span className="font-medium text-gray-900">{event.registrationEnd ? new Date(event.registrationEnd).toLocaleDateString() : '—'}</span>
               </li>
               <li className="flex justify-between items-center text-sm">
                 <span className="text-gray-600">Submissions Due</span>
-                <span className="font-medium text-gray-900">{new Date(event.submissionDeadline).toLocaleDateString()}</span>
+                <span className="font-medium text-gray-900">{event.submissionDeadline ? new Date(event.submissionDeadline).toLocaleDateString() : '—'}</span>
               </li>
             </ul>
           </div>

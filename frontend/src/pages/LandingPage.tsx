@@ -6,7 +6,6 @@ import {
   Clock3,
   Code2,
   Globe,
-  Layers,
   Sparkles,
   Trophy,
   Users,
@@ -74,11 +73,11 @@ export default function LandingPage() {
   }, [])
 
   return (
-    <div className="relative overflow-hidden bg-[linear-gradient(180deg,#f3fbf8_0%,#f2fbf9_18%,#f5fbff_52%,#f7fbff_100%)]">
+    <div className="relative overflow-hidden bg-[linear-gradient(180deg,#f3fbf8_0%,#f2fbf9_18%,#f5fbff_52%,#f7fbff_100%)] dark:bg-[linear-gradient(180deg,#0f172a_0%,#1e293b_18%,#0f172a_52%,#020617_100%)]">
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-1/2 top-[-150px] h-[620px] w-[880px] -translate-x-1/2 rounded-full bg-gradient-to-br from-emerald-200/30 via-cyan-200/20 to-indigo-200/12 blur-[120px]" />
-        <div className="absolute -left-28 top-[28%] h-[460px] w-[460px] rounded-full bg-gradient-to-br from-emerald-200/20 to-cyan-200/10 blur-[100px]" />
-        <div className="absolute -right-24 top-[40%] h-[520px] w-[520px] rounded-full bg-gradient-to-br from-indigo-200/16 to-cyan-200/14 blur-[110px]" />
+        <div className="absolute left-1/2 top-[-150px] h-[620px] w-[880px] -translate-x-1/2 rounded-full bg-gradient-to-br from-emerald-200/30 via-cyan-200/20 to-indigo-200/12 blur-[120px] dark:from-emerald-500/10 dark:via-cyan-500/10 dark:to-indigo-500/10" />
+        <div className="absolute -left-28 top-[28%] h-[460px] w-[460px] rounded-full bg-gradient-to-br from-emerald-200/20 to-cyan-200/10 blur-[100px] dark:from-emerald-500/10 dark:to-cyan-500/10" />
+        <div className="absolute -right-24 top-[40%] h-[520px] w-[520px] rounded-full bg-gradient-to-br from-indigo-200/16 to-cyan-200/14 blur-[110px] dark:from-indigo-500/10 dark:to-cyan-500/10" />
         <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(148,163,184,0.22)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.22)_1px,transparent_1px)] [background-size:38px_38px]" />
       </div>
 
@@ -86,14 +85,11 @@ export default function LandingPage() {
         <section className="relative pt-14">
           <div className="grid gap-12 lg:grid-cols-[1.02fr_0.98fr] lg:items-center">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/70 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 backdrop-blur-md">
-                <Sparkles size={14} /> Production-ready platform
-              </div>
-              <h1 className="mt-6 max-w-xl text-balance text-5xl font-bold leading-[1.02] tracking-tight text-slate-900 sm:text-6xl">
+              <h1 className="mt-6 max-w-xl text-balance text-5xl font-bold leading-[1.02] tracking-tight text-slate-900 dark:text-white sm:text-6xl">
                 Unify Ethiopia&apos;s Innovation Ecosystem
               </h1>
               <div className="mt-6 h-1.5 w-52 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400" />
-              <p className="mt-6 max-w-lg text-base leading-relaxed text-slate-600 sm:text-lg">
+              <p className="mt-6 max-w-lg text-base leading-relaxed text-slate-600 dark:text-slate-400 sm:text-lg">
                 A centralized, multilingual platform for end-to-end hackathon management and discovery in Ethiopia. Connect participants, organizers, and judges in one unified ecosystem.
               </p>
 
@@ -328,10 +324,7 @@ export default function LandingPage() {
           </div>
 
           <aside className="rounded-[2rem] border border-white/65 bg-gradient-to-br from-slate-900/95 to-indigo-950/95 p-8 text-white shadow-elevated">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-indigo-100">
-              <Layers size={14} /> Production ready
-            </div>
-            <h3 className="mt-4 text-2xl font-bold">Launch your next event confidently</h3>
+            <h3 className="text-2xl font-bold">Launch your next event confidently</h3>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">
               Signup, login, role checks, token handling, and route guards are now aligned to the backend auth contract.
             </p>

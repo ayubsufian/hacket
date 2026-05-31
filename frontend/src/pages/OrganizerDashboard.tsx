@@ -54,7 +54,7 @@ export default function OrganizerDashboard() {
             setLoading(true)
             setError(null)
             const r = await listEvents({ limit: 50 })
-            setEvents(r.data.filter(event => user?.role === 'ADMIN' || event.organizerId === user?.id))
+            setEvents(r.data?.filter(event => user?.role === 'ADMIN' || event.organizerId === user?.id) ?? [])
         }
         catch (err: any) { setError(err.message || 'Unable to connect') }
         finally { setLoading(false) }
@@ -307,16 +307,16 @@ export default function OrganizerDashboard() {
             <div className="card-elevated border border-gray-100 overflow-hidden bg-white">
                 <div className="border-b border-gray-100 p-5 bg-gray-50/50"><h2 className="text-lg font-bold text-gray-900">Your Hackathons</h2></div>
                 <div className="divide-y divide-gray-100">
-                    {loading ? <div className="p-12 text-center text-gray-400"><Loader2 className="animate-spin mx-auto text-accent-500" size={32} /></div> : events.length === 0 ? <p className="p-12 text-center text-gray-500">You haven't created any events yet.</p> : events.map(ev => (
+                    {loading ? <div className="p-12 text-center text-gray-400"><Loader2 className="animate-spin mx-auto text-accent-500" size={32} /></div> : events?.length === 0 ? <p className="p-12 text-center text-gray-500">You haven't created any events yet.</p> : events?.map(ev => (
                         <div key={ev.id} className="p-5 hover:bg-gray-50 transition-colors group">
                             <div className="flex items-start justify-between gap-4">
                                 <Link to={`/events/${ev.id}`} className="flex-1 min-w-0">
                                     <div className="flex items-center gap-3 mb-1.5">
-                                        <span className={`badge ${ev.status === 'REGISTRATION_OPEN' ? 'badge-green' : ev.status === 'DRAFT' ? 'badge-yellow' : 'badge-gray'}`}>{ev.status.replace(/_/g, ' ')}</span>
+                                        <span className={`badge ${ev.status === 'REGISTRATION_OPEN' ? 'badge-green' : ev.status === 'DRAFT' ? 'badge-yellow' : 'badge-gray'}`}>{ev.status?.replace(/_/g, ' ') || '—'}</span>
                                     </div>
                                     <h3 className="font-bold text-gray-900 group-hover:text-accent-600 transition-colors text-lg truncate">{ev.title}</h3>
                                     <div className="mt-2 flex items-center gap-4 text-xs text-gray-500 font-medium">
-                                        <span className="flex items-center gap-1"><Calendar size={14} className="text-gray-400" /> {new Date(ev.eventStart).toLocaleDateString()}</span>
+                                        <span className="flex items-center gap-1"><Calendar size={14} className="text-gray-400" /> {ev.eventStart ? new Date(ev.eventStart).toLocaleDateString() : '—'}</span>
                                         <span className="flex items-center gap-1"><MapPin size={14} className="text-gray-400" /> {ev.region || 'Virtual'}</span>
                                     </div>
                                 </Link>

@@ -42,7 +42,7 @@ export default function TeamsPage() {
       // Load events for team creation
       const eventsRes = await listEvents({ limit: 10 })
       setEvents(eventsRes.data)
-      if (eventsRes.data.length > 0 && !selectedEvent) {
+      if (eventsRes.data?.length > 0 && !selectedEvent) {
         setSelectedEvent(eventsRes.data[0].id)
       }
       
@@ -179,14 +179,14 @@ export default function TeamsPage() {
       </div>
 
       {/* Pending Invitations */}
-      {invitations.length > 0 && (
+      {invitations?.length > 0 && (
         <div className="card-elevated p-6 border border-blue-100 bg-blue-50">
           <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Mail className="text-blue-500" size={18} />
             Pending Invitations ({invitations.length})
           </h3>
           <div className="space-y-3">
-            {invitations.map((invitation) => (
+            {invitations?.map((invitation) => (
               <div key={invitation.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-200">
                 <div>
                   <p className="font-medium text-gray-900">Team Invitation</p>
@@ -231,7 +231,7 @@ export default function TeamsPage() {
                     required
                   >
                     <option value="">Select an event</option>
-                    {events.map(event => (
+                    {events?.map(event => (
                       <option key={event.id} value={event.id}>{event.title}</option>
                     ))}
                   </select>

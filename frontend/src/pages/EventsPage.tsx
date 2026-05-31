@@ -49,7 +49,7 @@ export default function EventsPage() {
     return () => { active = false }
   }, [])
 
-  const filtered = events.filter(e => {
+  const filtered = events?.filter(e => {
     const matchSearch = e.title.toLowerCase().includes(search.toLowerCase()) ||
       (e.description?.toLowerCase() || '').includes(search.toLowerCase())
     const matchStatus = status === 'ALL' || e.status === status
@@ -101,14 +101,14 @@ export default function EventsPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="skeleton h-72 rounded-2xl" />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : filtered?.length === 0 ? (
         <div className="py-20 text-center bg-white rounded-xl border border-gray-100 shadow-sm">
           <p className="text-gray-500">No events found matching your criteria.</p>
           <button onClick={() => { setSearch(''); setStatus('ALL') }} className="mt-4 text-sm font-medium text-accent-600 hover:underline">Clear filters</button>
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(ev => (
+          {filtered?.map(ev => (
             <Link
               key={ev.id}
               to={`/events/${ev.id}`}
@@ -125,7 +125,7 @@ export default function EventsPage() {
                 ) : (
                   <div className={`w-full h-full bg-gradient-to-br ${cardGradient(ev.title)} flex items-center justify-center`}>
                     <span className="text-white/20 font-black text-7xl select-none leading-none">
-                      {ev.title.charAt(0).toUpperCase()}
+                      {ev.title?.charAt(0).toUpperCase() || '?'}
                     </span>
                   </div>
                 )}
@@ -173,7 +173,7 @@ export default function EventsPage() {
                 <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-3 text-xs text-gray-500">
                   <span className="flex items-center gap-1.5">
                     <Calendar size={13} className="text-gray-400" />
-                    {new Date(ev.eventStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {ev.eventStart ? new Date(ev.eventStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <MapPin size={13} className="text-gray-400" />

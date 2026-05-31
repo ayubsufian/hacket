@@ -59,8 +59,8 @@ export default function Dashboard() {
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Welcome back, {user?.profile?.firstName || 'User'}</h1>
-          <p className="text-gray-500 mt-1">Here's what's happening in your hackathons.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Welcome back, {user?.profile?.firstName || 'User'}</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Here's what's happening in your hackathons.</p>
         </div>
         <Link to="/events" className="btn-primary">Browse events</Link>
       </div>
@@ -84,25 +84,25 @@ export default function Dashboard() {
                   <s.icon size={24} />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">{s.label}</p>
-                  <p className="text-2xl font-bold text-gray-900">{s.value}</p>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{s.label}</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{s.value}</p>
                 </div>
               </div>
             ))}
           </div>
 
-          {recommendations.length > 0 && (
+          {recommendations?.length > 0 && (
             <div className="card flex flex-col">
               <div className="flex items-center justify-between border-b border-border p-4">
-                <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Sparkles size={18} className="text-amber-400" /> Recommended for You</h2>
+                <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Sparkles size={18} className="text-amber-400" /> Recommended for You</h2>
                 <Link to="/events" className="text-sm font-medium text-accent-600 hover:text-accent-700">See all</Link>
               </div>
               <div className="flex-1 divide-y divide-border">
                 {recommendations.slice(0, 4).map(rec => (
                   <Link key={rec.hackathonId} to={`/events/${rec.hackathonId}`} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group">
                     <div>
-                      <p className="font-medium text-gray-900 group-hover:text-accent-600 transition-colors">{rec.title}</p>
-                      <p className="text-xs text-gray-500 mt-1">{rec.tags.slice(0, 3).join(', ')}</p>
+                      <p className="font-medium text-gray-900 dark:text-gray-200 group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors">{rec.title}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{(rec.tags ?? []).slice(0, 3).join(', ')}</p>
                     </div>
                     <span className="text-xs font-bold text-amber-500 bg-amber-50 px-2 py-1 rounded-full">{Math.round(rec.matchScore * 100)}% match</span>
                   </Link>
@@ -114,15 +114,15 @@ export default function Dashboard() {
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="card flex flex-col">
               <div className="flex items-center justify-between border-b border-border p-4">
-                <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Calendar size={18} className="text-gray-400" /> Recent Events</h2>
+                <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Calendar size={18} className="text-gray-400" /> Recent Events</h2>
                 <Link to="/events" className="text-sm font-medium text-accent-600 hover:text-accent-700">View all</Link>
               </div>
               <div className="flex-1 divide-y divide-border">
-                {events.length === 0 ? <p className="p-8 text-center text-sm text-gray-500">No events found.</p> : events.slice(0, 4).map(ev => (
-                  <Link key={ev.id} to={`/events/${ev.id}`} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group">
+                {events?.length === 0 ? <p className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">No events found.</p> : events?.slice(0, 4).map(ev => (
+                  <Link key={ev.id} to={`/events/${ev.id}`} className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors group">
                     <div>
-                      <p className="font-medium text-gray-900 group-hover:text-accent-600 transition-colors">{ev.title}</p>
-                      <p className="text-xs text-gray-500 mt-1">{new Date(ev.eventStart).toLocaleDateString()}</p>
+                      <p className="font-medium text-gray-900 dark:text-gray-200 group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors">{ev.title}</p>
+                      <p className="text-xs text-gray-500 mt-1">{ev.eventStart ? new Date(ev.eventStart).toLocaleDateString() : '—'}</p>
                     </div>
                     <ChevronRight size={16} className="text-gray-300 group-hover:text-accent-500 group-hover:translate-x-1 transition-all" />
                   </Link>
@@ -136,11 +136,11 @@ export default function Dashboard() {
                 <Link to="/leaderboard" className="text-sm font-medium text-accent-600 hover:text-accent-700">Full rankings</Link>
               </div>
               <div className="flex-1 overflow-x-auto">
-                {leaderboard.length === 0 ? <p className="p-8 text-center text-sm text-gray-500">No rankings available yet.</p> : (
+                {leaderboard?.length === 0 ? <p className="p-8 text-center text-sm text-gray-500">No rankings available yet.</p> : (
                   <table className="tbl !border-t-0">
                     <thead><tr><th className="pl-4 w-12">#</th><th>Team</th><th className="text-right pr-4">Score</th></tr></thead>
                     <tbody>
-                      {leaderboard.map((e, i) => (
+                      {leaderboard?.map((e, i) => (
                         <tr key={i}>
                           <td className="pl-4 font-bold text-gray-400">{i + 1}</td>
                           <td className="font-medium text-gray-900">{e.teamName || `Team ${i + 1}`}</td>
