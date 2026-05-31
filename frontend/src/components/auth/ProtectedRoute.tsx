@@ -22,7 +22,7 @@ export default function ProtectedRoute({ children, roles }: ProtectedRouteProps)
         return <Navigate to="/login" replace />
     }
 
-    if (roles && user && !roles.includes(user.role)) {
+    if (roles && user && user.role && !roles.includes(user.role)) {
         return (
             <div className="card mx-auto mt-20 max-w-md p-8 text-center">
                 <h2 className="text-xl font-bold text-gray-900">Access Denied</h2>
