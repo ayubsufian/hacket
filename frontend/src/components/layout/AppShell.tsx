@@ -70,9 +70,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2.5 group">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent-500 to-emerald-600 shadow-md shadow-accent-500/20 transition-transform duration-300 group-hover:scale-105">
-            <span className="text-sm font-bold text-white">H</span>
-          </div>
           <span className="text-lg font-bold tracking-tight text-navy-900 dark:text-white">
             Hack<span className="text-accent-600">ET</span>
           </span>
@@ -172,7 +169,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link to="/login" className="hidden sm:inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-navy-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-all duration-200">
                 Log in
               </Link>
-              <Link to="/signup" className="btn-primary !rounded-xl">
+              <Link to="/signup" className="btn-primary !bg-[#17A398] !rounded-xl">
                 Sign up
               </Link>
             </div>

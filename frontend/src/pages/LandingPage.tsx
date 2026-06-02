@@ -1,355 +1,262 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
-  ChevronRight,
-  Clock3,
-  Code2,
-  Globe,
-  Sparkles,
-  Trophy,
+  Search,
+  Calendar,
+  MapPin,
   Users,
+  MonitorPlay,
+  Tag,
+  Moon,
+  Sun,
 } from 'lucide-react'
 import { listEvents } from '../api/events'
+import { useTheme } from '../contexts/ThemeContext'
 import type { Hackathon } from '../types/models'
-import landingDashboard from '../assets/landing-dashboard.svg'
-import landingCollaboration from '../assets/landing-collaboration.svg'
 
-const heroPhoto = '/hacket-hero.jpg'
-
-const features = [
-  { icon: Globe, title: 'Bilingual platform', desc: 'Switch between English and Amharic while keeping all workflows intact.' },
-  { icon: Users, title: 'Team collaboration', desc: 'Create teams, manage members, and coordinate submissions in one workspace.' },
-  { icon: Code2, title: 'Submission lifecycle', desc: 'Draft, update, and submit projects with clear status and deadlines.' },
-  { icon: Trophy, title: 'Judging + leaderboard', desc: 'Score projects with role-based access and transparent rankings.' },
+const CARD_GRADIENTS = [
+  'from-emerald-500 to-teal-600',
+  'from-violet-500 to-indigo-600',
+  'from-orange-500 to-rose-600',
+  'from-sky-500 to-blue-600',
+  'from-pink-500 to-fuchsia-600',
+  'from-amber-500 to-orange-600',
 ]
 
-const stats = [
-  { value: '120+', label: 'Active hackathons hosted' },
-  { value: '35k+', label: 'Participant registrations' },
-  { value: '1.8k+', label: 'Projects submitted' },
-  { value: '98.7%', label: 'Platform uptime target' },
-]
+function cardGradient(title: string) {
+  let hash = 0
+  for (let i = 0; i < title.length; i++) hash = title.charCodeAt(i) + ((hash << 5) - hash)
+  return CARD_GRADIENTS[Math.abs(hash) % CARD_GRADIENTS.length]
+}
 
-const organizers = [
-  { name: 'Marta K.', role: 'Program Director', org: 'Addis Innovators Hub' },
-  { name: 'Daniel T.', role: 'Head of Partnerships', org: 'Blue Nile Labs' },
-  { name: 'Rahel A.', role: 'Community Lead', org: 'ET Youth Tech' },
-]
-
-const judges = [
-  { name: 'Aster M.', area: 'AI & Data Systems' },
-  { name: 'Biniam G.', area: 'Product Strategy' },
-  { name: 'Nardos H.', area: 'UX & Accessibility' },
-]
-
-const testimonials = [
-  {
-    quote: 'The new HackET flow removed the chaos between registration, teams, and judging. Everything now feels connected.',
-    author: 'Organizer, National Student Hack Week',
-  },
-  {
-    quote: 'As a participant, the dashboard and submission timeline are clear, fast, and easy to trust under pressure.',
-    author: 'Participant, Addis Build Sprint',
-  },
-]
+const STATUS_LABELS: Record<string, string> = {
+  REGISTRATION_OPEN: 'Open',
+  IN_PROGRESS: 'Live',
+  COMPLETED: 'Ended',
+  JUDGING: 'Judging',
+  REGISTRATION_CLOSED: 'Closed',
+  ARCHIVED: 'Archived',
+}
 
 const faqs = [
-  { q: 'Who can create an account?', a: 'Participants, organizers, judges, mentors, and admins can register with role-based access.' },
-  { q: 'How are protected pages enforced?', a: 'Protected routes check session identity and role permissions before rendering the page.' },
-  { q: 'Can I switch language across pages?', a: 'Yes. The language toggle is available in the app shell and persists during navigation.' },
+  { q: 'Who can participate?', a: 'Anyone! Students, professionals, and beginners are all welcome.' },
+  { q: 'How do I register?', a: 'Find an event and click Register. You\'ll need a free HackET account.' },
+  { q: 'Can I join as a team?', a: 'Yes! Create or join a team after registering for an event.' },
 ]
 
 export default function LandingPage() {
-  const [liveEvents, setLiveEvents] = useState<Hackathon[]>([])
-  const [loadingEvents, setLoadingEvents] = useState(true)
-  const [eventsError, setEventsError] = useState(false)
+  const [events, setEvents] = useState<Hackathon[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('ALL')
 
   useEffect(() => {
-    listEvents({ limit: 4 })
-      .then(res => setLiveEvents(res.data.filter(event => event.status !== 'DRAFT')))
-      .catch(() => setEventsError(true))
-      .finally(() => setLoadingEvents(false))
+    listEvents({ limit: 50 })
+      .then(res => setEvents(res.data.filter(e => e.status !== 'DRAFT')))
+      .catch(() => setError(true))
+      .finally(() => setLoading(false))
   }, [])
 
+  const filteredEvents = useMemo(() => {
+    return events.filter(ev => {
+      const matchesSearch = ev.title.toLowerCase().includes(search.toLowerCase()) ||
+        (ev.description?.toLowerCase() || '').includes(search.toLowerCase()) ||
+        (ev.tags?.some(tag => tag.toLowerCase().includes(search.toLowerCase())) ?? false)
+      const matchesStatus = statusFilter === 'ALL' || ev.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+  }, [events, search, statusFilter])
+
+  const activeCount = events.filter(e => e.status === 'IN_PROGRESS' || e.status === 'REGISTRATION_OPEN').length
+  const { resolvedTheme, toggleTheme } = useTheme()
+
   return (
-    <div className="relative overflow-hidden bg-[linear-gradient(180deg,#f3fbf8_0%,#f2fbf9_18%,#f5fbff_52%,#f7fbff_100%)] dark:bg-[linear-gradient(180deg,#0f172a_0%,#1e293b_18%,#0f172a_52%,#020617_100%)]">
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-1/2 top-[-150px] h-[620px] w-[880px] -translate-x-1/2 rounded-full bg-gradient-to-br from-emerald-200/30 via-cyan-200/20 to-indigo-200/12 blur-[120px] dark:from-emerald-500/10 dark:via-cyan-500/10 dark:to-indigo-500/10" />
-        <div className="absolute -left-28 top-[28%] h-[460px] w-[460px] rounded-full bg-gradient-to-br from-emerald-200/20 to-cyan-200/10 blur-[100px] dark:from-emerald-500/10 dark:to-cyan-500/10" />
-        <div className="absolute -right-24 top-[40%] h-[520px] w-[520px] rounded-full bg-gradient-to-br from-indigo-200/16 to-cyan-200/14 blur-[110px] dark:from-indigo-500/10 dark:to-cyan-500/10" />
-        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(148,163,184,0.22)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.22)_1px,transparent_1px)] [background-size:38px_38px]" />
-      </div>
-
-      <main className="mx-auto max-w-7xl px-4 pb-20 pt-8 sm:px-6 lg:px-8">
-        <section className="relative pt-14">
-          <div className="grid gap-12 lg:grid-cols-[1.02fr_0.98fr] lg:items-center">
-            <div>
-              <h1 className="mt-6 max-w-xl text-balance text-5xl font-bold leading-[1.02] tracking-tight text-slate-900 dark:text-white sm:text-6xl">
-                Unify Ethiopia&apos;s Innovation Ecosystem
-              </h1>
-              <div className="mt-6 h-1.5 w-52 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400" />
-              <p className="mt-6 max-w-lg text-base leading-relaxed text-slate-600 dark:text-slate-400 sm:text-lg">
-                A centralized, multilingual platform for end-to-end hackathon management and discovery in Ethiopia. Connect participants, organizers, and judges in one unified ecosystem.
-              </p>
-
-              <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-                <Link to="/events" className="btn-primary h-12 px-7 text-base !rounded-full !bg-gradient-to-r !from-emerald-500 !to-emerald-400 !shadow-emerald-500/25">
-                  Explore Hackathons <ArrowRight size={17} />
-                </Link>
-                <Link to="/signup" className="btn-secondary h-12 px-7 text-base !rounded-full">
-                  Sign up
-                </Link>
-              </div>
-
-              <div className="mt-12 grid max-w-xl gap-4 sm:grid-cols-2">
-                <div className="glass rounded-2xl p-4">
-                  <p className="text-xl font-bold text-slate-900">200k+</p>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Ethiopian innovators</p>
-                </div>
-                <div className="glass rounded-2xl p-4">
-                  <p className="text-xl font-bold text-slate-900">Role-based</p>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Secure workflows</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative mx-auto w-full max-w-[560px]">
-              <div className="absolute -left-9 top-10 hidden animate-float rounded-2xl border border-white/70 bg-white/78 p-3 text-sm shadow-glass backdrop-blur-xl lg:block">
-                <p className="text-[11px] font-semibold text-slate-500">Active Hackathons</p>
-                <div className="mt-1 flex items-center gap-2">
-                  <p className="text-xl font-bold text-slate-900">15</p>
-                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Send</span>
-                </div>
-              </div>
-              <div className="absolute -bottom-6 -right-6 hidden animate-float rounded-2xl border border-white/70 bg-white/80 p-3 text-sm shadow-glass backdrop-blur-xl [animation-delay:700ms] lg:block">
-                <p className="text-[11px] font-semibold text-slate-500">Projects submitted</p>
-                <p className="mt-1 text-base font-bold text-slate-900">1.8k+</p>
-              </div>
-
-              <div className="overflow-hidden rounded-[2rem] border border-white/75 bg-white/70 p-2 shadow-hero backdrop-blur-xl">
-                <img
-                  src={heroPhoto}
-                  alt="HackET participants collaborating during a hackathon event"
-                  className="aspect-[4/3] w-full rounded-[1.5rem] object-cover"
-                  loading="eager"
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?auto=format&fit=crop&w=1200&q=80' }}
-                />
-              </div>
-              <div className="absolute -right-9 top-[44%] hidden w-36 animate-float overflow-hidden rounded-2xl border border-emerald-200/60 bg-white/95 p-3 shadow-card backdrop-blur-xl [animation-delay:400ms] lg:block">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-emerald-600 font-semibold">Teams</p>
-                <p className="mt-2 text-xl font-bold text-slate-900">120+</p>
-                <p className="mt-0.5 text-[10px] text-slate-500">Hackathons hosted</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-24">
-          <div className="mb-8 flex items-center justify-between gap-4">
-            <div>
-              <p className="section-title text-indigo-600">Features</p>
-              <h2 className="text-3xl font-bold text-slate-900 sm:text-4xl">Built for end-to-end event execution</h2>
-            </div>
-            <Link to="/signup" className="hidden items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-500 sm:inline-flex">
-              Create account <ChevronRight size={16} />
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-black">
+      {/* Header */}
+      <header className="bg-white dark:bg-black border-b border-gray-100 dark:border-slate-800 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl flex items-center justify-between">
+          <Link to="/" className="flex items-center text-gray-900 dark:text-white hover:text-gray-700 dark:hover:text-gray-300">
+            <span className="text-lg font-bold tracking-tight">Hack<span className="text-emerald-500">ET</span></span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex items-center justify-center rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-gray-200 transition-all duration-200 shadow-sm"
+              aria-label="Toggle theme"
+            >
+              {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <Link to="/login" className="hidden sm:inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-all duration-200">
+              Log in
+            </Link>
+            <Link to="/signup" className="inline-flex items-center justify-center rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 text-sm font-medium transition-colors">
+              Sign up
             </Link>
           </div>
+        </div>
+      </header>
 
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {features.map((feature, index) => (
-              <article
-                key={feature.title}
-                className="group rounded-3xl border border-white/65 bg-white/62 p-6 shadow-card backdrop-blur-xl transition-all duration-300 hover:-translate-y-1.5 hover:shadow-card-hover"
-                style={{ animationDelay: `${120 + index * 80}ms` }}
-              >
-                <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                  <feature.icon size={20} />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{feature.desc}</p>
-              </article>
+      {/* Hero - Simple */}
+      <section className="bg-white dark:bg-black border-b border-gray-100 dark:border-slate-800">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white">
+                Find your next hackathon
+              </h1>
+              <p className="mt-2 text-gray-500 dark:text-gray-400">
+                {activeCount > 0 ? `${activeCount} events open now` : 'Discover upcoming events'} · Ethiopia's hackathon platform
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Link to="/events" className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-xl transition-colors">
+                Browse all <ArrowRight size={18} />
+              </Link>
+              <Link to="/signup" className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-700 dark:text-gray-300 font-medium rounded-xl transition-colors">
+                Join free
+              </Link>
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="mt-8 flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Search hackathons by name, topic, or tag..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            >
+              <option value="ALL">All Events</option>
+              <option value="REGISTRATION_OPEN">Open</option>
+              <option value="IN_PROGRESS">Live</option>
+              <option value="JUDGING">Judging</option>
+              <option value="COMPLETED">Ended</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      {/* Events Grid */}
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {loading ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="skeleton h-64 rounded-2xl" />
             ))}
           </div>
-        </section>
-
-        <section className="mt-24">
-          <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="section-title text-indigo-600">Events</p>
-              <h2 className="text-3xl font-bold text-slate-900 sm:text-4xl">Live hackathons and deadlines</h2>
-            </div>
-            <Link to="/events" className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-500">
-              Browse all events <ChevronRight size={16} />
-            </Link>
+        ) : error ? (
+          <div className="text-center py-16">
+            <p className="text-gray-500 dark:text-gray-400">Could not load events. Please try again.</p>
+            <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg">
+              Retry
+            </button>
           </div>
-
-          <div className="overflow-hidden rounded-[2rem] border border-white/65 bg-white/62 shadow-elevated backdrop-blur-xl">
-            {loadingEvents ? (
-              <div className="space-y-4 p-6">{[1, 2, 3].map(item => <div key={item} className="skeleton h-20 w-full rounded-2xl" />)}</div>
-            ) : eventsError ? (
-              <div className="p-10 text-center">
-                <p className="font-semibold text-slate-800">Could not load events right now</p>
-                <p className="mt-1 text-sm text-slate-500">Please check backend availability and try again.</p>
-              </div>
-            ) : liveEvents.length === 0 ? (
-              <div className="p-10 text-center text-slate-500">No active events available yet.</div>
-            ) : (
-              <div className="divide-y divide-white/70">
-                {liveEvents.map(event => (
-                  <Link key={event.id} to={`/events/${event.id}`} className="group flex flex-wrap items-center gap-4 p-5 transition-colors hover:bg-white/75 sm:flex-nowrap">
-                    <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-sm font-bold text-white shadow-sm">
-                      {event.title.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate font-semibold text-slate-900 group-hover:text-indigo-600">{event.title}</h3>
-                      <p className="mt-1 truncate text-sm text-slate-500">{event.description}</p>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                      <Clock3 size={14} />
-                      {new Date(event.eventStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </div>
-                  </Link>
-                ))}
-              </div>
+        ) : filteredEvents.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-gray-500 dark:text-gray-400">
+              {search || statusFilter !== 'ALL' ? 'No events match your search' : 'No events available yet'}
+            </p>
+            {(search || statusFilter !== 'ALL') && (
+              <button onClick={() => { setSearch(''); setStatusFilter('ALL') }} className="mt-4 text-emerald-600 hover:text-emerald-700 font-medium">
+                Clear filters
+              </button>
             )}
           </div>
-        </section>
-
-        <section className="mt-24 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {stats.map(stat => (
-            <div key={stat.label} className="rounded-3xl border border-white/65 bg-white/62 p-6 shadow-card backdrop-blur-xl">
-              <p className="text-3xl font-bold text-slate-900">{stat.value}</p>
-              <p className="mt-2 text-sm text-slate-600">{stat.label}</p>
-            </div>
-          ))}
-        </section>
-
-        <section className="mt-24 grid gap-8 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-white/65 bg-white/62 p-7 shadow-card backdrop-blur-xl">
-            <p className="section-title text-indigo-600">Organizers</p>
-            <h3 className="text-2xl font-bold text-slate-900">Trusted by event leaders</h3>
-            <div className="mt-5 space-y-3">
-              {organizers.map(org => (
-                <div key={org.name} className="rounded-2xl border border-white/70 bg-white/78 p-4">
-                  <p className="font-semibold text-slate-900">{org.name}</p>
-                  <p className="text-sm text-slate-500">{org.role} · {org.org}</p>
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredEvents.map((ev) => (
+              <Link
+                key={ev.id}
+                to={`/events/${ev.id}`}
+                className="group bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-200"
+              >
+                <div className="relative h-40 overflow-hidden">
+                  {ev.coverImageUrl ? (
+                    <img src={ev.coverImageUrl} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  ) : (
+                    <div className={`w-full h-full bg-gradient-to-br ${cardGradient(ev.title)} flex items-center justify-center`}>
+                      <span className="text-white/30 font-black text-6xl select-none">{ev.title?.charAt(0).toUpperCase() || '?'}</span>
+                    </div>
+                  )}
+                  <div className="absolute top-3 left-3">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                      ev.status === 'REGISTRATION_OPEN' ? 'bg-emerald-500 text-white' :
+                      ev.status === 'IN_PROGRESS' ? 'bg-blue-500 text-white' :
+                      ev.status === 'JUDGING' ? 'bg-purple-500 text-white' :
+                      'bg-gray-500/80 text-white'
+                    }`}>
+                      {STATUS_LABELS[ev.status] || ev.status}
+                    </span>
+                  </div>
+                  {ev.isVirtual && (
+                    <div className="absolute top-3 right-3">
+                      <span className="flex items-center gap-1 text-xs font-medium text-white bg-black/50 backdrop-blur-sm px-2 py-1 rounded-full">
+                        <MonitorPlay size={12} /> Virtual
+                      </span>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-white/65 bg-white/62 p-7 shadow-card backdrop-blur-xl">
-            <p className="section-title text-indigo-600">Judges</p>
-            <h3 className="text-2xl font-bold text-slate-900">Scoring panel readiness</h3>
-            <div className="mt-5 space-y-3">
-              {judges.map(judge => (
-                <div key={judge.name} className="rounded-2xl border border-white/70 bg-white/78 p-4">
-                  <p className="font-semibold text-slate-900">{judge.name}</p>
-                  <p className="text-sm text-slate-500">{judge.area}</p>
+                <div className="p-4">
+                  <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-1">{ev.title}</h3>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{ev.description || 'No description available'}</p>
+                  {ev.tags && ev.tags.length > 0 && (
+                    <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+                      <Tag size={12} className="text-gray-400" />
+                      {ev.tags.slice(0, 2).map(tag => (
+                        <span key={tag} className="text-xs bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded">{tag}</span>
+                      ))}
+                      {ev.tags.length > 2 && <span className="text-xs text-gray-400">+{ev.tags.length - 2}</span>}
+                    </div>
+                  )}
+                  <div className="mt-4 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                    <span className="flex items-center gap-1"><Calendar size={14} /> {ev.eventStart ? new Date(ev.eventStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'TBA'}</span>
+                    <span className="flex items-center gap-1"><MapPin size={14} /> {ev.region || 'Remote'}</span>
+                    <span className="flex items-center gap-1"><Users size={14} /> {ev.minTeamSize}-{ev.maxTeamSize}</span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-14 grid gap-6 lg:grid-cols-2">
-          <div className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/70 p-3 shadow-card backdrop-blur-xl">
-            <img
-              src={landingDashboard}
-              alt="HackET dashboard screen"
-              className="w-full rounded-[1.5rem]"
-              loading="lazy"
-            />
-          </div>
-          <div className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/70 p-3 shadow-card backdrop-blur-xl">
-            <img
-              src={landingCollaboration}
-              alt="HackET collaboration and team workflow"
-              className="w-full rounded-[1.5rem]"
-              loading="lazy"
-            />
-          </div>
-        </section>
-
-        <section className="mt-24 grid gap-5 lg:grid-cols-2">
-          {testimonials.map(item => (
-            <blockquote key={item.author} className="rounded-[2rem] border border-white/65 bg-white/62 p-7 shadow-card backdrop-blur-xl">
-              <p className="text-lg leading-relaxed text-slate-700">“{item.quote}”</p>
-              <footer className="mt-4 text-sm font-semibold text-slate-500">{item.author}</footer>
-            </blockquote>
-          ))}
-        </section>
-
-        <section className="mt-24 rounded-[2rem] border border-white/65 bg-white/62 p-8 shadow-elevated backdrop-blur-xl">
-          <div className="mb-6 flex items-center justify-between gap-4">
-            <div>
-              <p className="section-title text-indigo-600">Leaderboard</p>
-              <h3 className="text-2xl font-bold text-slate-900">Top teams preview</h3>
-            </div>
-            <Link to="/leaderboard" className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-500">
-              Full leaderboard <ChevronRight size={16} />
-            </Link>
-          </div>
-          <div className="space-y-3">
-            {[
-              { team: 'Code Rift', score: '94.6', track: 'AI for Public Services' },
-              { team: 'Pixel Forge', score: '92.1', track: 'EdTech Innovation' },
-              { team: 'Green Signal', score: '90.8', track: 'Climate Solutions' },
-            ].map((entry, index) => (
-              <div key={entry.team} className="flex items-center gap-4 rounded-2xl border border-white/70 bg-white/78 p-4">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-50 text-sm font-semibold text-indigo-600">#{index + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-900">{entry.team}</p>
-                  <p className="truncate text-sm text-slate-500">{entry.track}</p>
-                </div>
-                <p className="text-sm font-semibold text-slate-700">{entry.score}</p>
-              </div>
+              </Link>
             ))}
           </div>
-        </section>
+        )}
 
-        <section className="mt-24 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[2rem] border border-white/65 bg-white/62 p-8 shadow-card backdrop-blur-xl">
-            <p className="section-title text-indigo-600">FAQ</p>
-            <h3 className="text-2xl font-bold text-slate-900">Common questions</h3>
-            <div className="mt-6 space-y-4">
+        {/* Simple FAQ */}
+        {!loading && !error && events.length > 0 && (
+          <section className="mt-16">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Common questions</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {faqs.map(item => (
-                <div key={item.q} className="rounded-2xl border border-white/70 bg-white/78 p-4">
-                  <p className="font-semibold text-slate-900">{item.q}</p>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-600">{item.a}</p>
+                <div key={item.q} className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-gray-100 dark:border-slate-800">
+                  <p className="font-medium text-gray-900 dark:text-white text-sm">{item.q}</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{item.a}</p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
+        )}
 
-          <aside className="rounded-[2rem] border border-white/65 bg-gradient-to-br from-slate-900/95 to-indigo-950/95 p-8 text-white shadow-elevated">
-            <h3 className="text-2xl font-bold">Launch your next event confidently</h3>
-            <p className="mt-3 text-sm leading-relaxed text-slate-300">
-              Signup, login, role checks, token handling, and route guards are now aligned to the backend auth contract.
-            </p>
-            <div className="mt-6 flex flex-col gap-3">
-              <Link to="/signup" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition-transform hover:-translate-y-0.5">
-                Get started <ArrowRight size={16} />
-              </Link>
-              <Link to="/login" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/15">
-                Login to dashboard
-              </Link>
-            </div>
-          </aside>
-        </section>
-
-        <footer className="mt-24 rounded-[2rem] border border-white/65 bg-white/62 px-6 py-7 shadow-card backdrop-blur-xl sm:px-8">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        {/* Simple Footer */}
+        <footer className="mt-16 pt-8 border-t border-gray-100 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <p className="text-lg font-bold text-slate-900">HackET</p>
-              <p className="text-sm text-slate-500">Modern infrastructure for hackathon communities.</p>
+              <p className="font-semibold text-gray-900 dark:text-white">HackET</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Ethiopia's hackathon platform</p>
             </div>
-            <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-slate-600">
-              <Link to="/events" className="hover:text-slate-900">Events</Link>
-              <Link to="/leaderboard" className="hover:text-slate-900">Leaderboard</Link>
-              <Link to="/login" className="hover:text-slate-900">Login</Link>
-              <Link to="/signup" className="hover:text-slate-900">Sign up</Link>
+            <div className="flex gap-6 text-sm text-gray-500 dark:text-gray-400">
+              <Link to="/events" className="hover:text-emerald-600">Events</Link>
+              <Link to="/leaderboard" className="hover:text-emerald-600">Leaderboard</Link>
+              <Link to="/login" className="hover:text-emerald-600">Login</Link>
             </div>
           </div>
         </footer>

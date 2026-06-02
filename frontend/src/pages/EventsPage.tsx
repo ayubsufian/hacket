@@ -59,8 +59,8 @@ export default function EventsPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Discover Events</h1>
-        <p className="mt-1 text-sm text-gray-500">Browse and register for upcoming hackathons.</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Discover Events</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Browse and register for upcoming hackathons.</p>
       </div>
 
       <div className="card p-4 flex flex-col sm:flex-row gap-4 items-center">
@@ -81,7 +81,7 @@ export default function EventsPage() {
               onClick={() => setStatus(s)}
               className={`rounded-full px-4 py-2 text-xs font-medium whitespace-nowrap transition-all ${status === s
                 ? 'bg-accent-500 text-white shadow-md shadow-accent-500/20'
-                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm'
+                : 'bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 dark:hover:border-gray-500 hover:shadow-sm'
               }`}
             >
               {s.replace(/_/g, ' ')}
@@ -91,10 +91,10 @@ export default function EventsPage() {
       </div>
 
       {error ? (
-        <div className="alert-error flex flex-col items-center justify-center py-16 px-4 text-center bg-white border border-red-100 rounded-xl shadow-sm">
+        <div className="alert-error flex flex-col items-center justify-center py-16 px-4 text-center bg-white dark:bg-slate-800 border border-red-100 dark:border-red-900/30 rounded-xl shadow-sm">
           <Globe className="text-red-400 mb-3" size={32} />
-          <h3 className="text-lg font-semibold text-gray-900">Connection Offline</h3>
-          <p className="mt-2 text-sm text-gray-500 max-w-sm">{error}</p>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Connection Offline</h3>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-sm">{error}</p>
           <button onClick={() => window.location.reload()} className="mt-6 btn-primary shadow-red-500/20 from-red-500 to-red-600 hover:from-red-600 hover:to-red-700">Try again</button>
         </div>
       ) : loading ? (
@@ -102,8 +102,8 @@ export default function EventsPage() {
           {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="skeleton h-72 rounded-2xl" />)}
         </div>
       ) : filtered?.length === 0 ? (
-        <div className="py-20 text-center bg-white rounded-xl border border-gray-100 shadow-sm">
-          <p className="text-gray-500">No events found matching your criteria.</p>
+        <div className="py-20 text-center bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <p className="text-gray-500 dark:text-gray-400">No events found matching your criteria.</p>
           <button onClick={() => { setSearch(''); setStatus('ALL') }} className="mt-4 text-sm font-medium text-accent-600 hover:underline">Clear filters</button>
         </div>
       ) : (
@@ -147,40 +147,40 @@ export default function EventsPage() {
 
               {/* Body */}
               <div className="p-5 flex flex-col flex-1">
-                <h3 className="text-base font-bold text-gray-900 group-hover:text-accent-600 transition-colors line-clamp-1">
+                <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 group-hover:text-accent-600 transition-colors line-clamp-1">
                   {ev.title}
                 </h3>
-                <p className="mt-1.5 text-sm text-gray-500 line-clamp-2 flex-1 leading-relaxed">
+                <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400 line-clamp-2 flex-1 leading-relaxed">
                   {ev.description}
                 </p>
 
                 {/* Tags */}
                 {ev.tags && ev.tags.length > 0 && (
                   <div className="mt-3 flex items-center gap-1.5 flex-wrap">
-                    <Tag size={11} className="text-gray-400 shrink-0" />
+                    <Tag size={11} className="text-gray-400 dark:text-gray-500 shrink-0" />
                     {ev.tags.slice(0, 3).map(tag => (
-                      <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                      <span key={tag} className="text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full">
                         {tag}
                       </span>
                     ))}
                     {ev.tags.length > 3 && (
-                      <span className="text-xs text-gray-400">+{ev.tags.length - 3}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">+{ev.tags.length - 3}</span>
                     )}
                   </div>
                 )}
 
                 {/* Meta row */}
-                <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-3 text-xs text-gray-500">
+                <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
                   <span className="flex items-center gap-1.5">
-                    <Calendar size={13} className="text-gray-400" />
+                    <Calendar size={13} className="text-gray-400 dark:text-gray-500" />
                     {ev.eventStart ? new Date(ev.eventStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <MapPin size={13} className="text-gray-400" />
+                    <MapPin size={13} className="text-gray-400 dark:text-gray-500" />
                     {ev.region || 'Remote'}
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <Users size={13} className="text-gray-400" />
+                    <Users size={13} className="text-gray-400 dark:text-gray-500" />
                     {ev.minTeamSize}–{ev.maxTeamSize}
                   </span>
                 </div>
