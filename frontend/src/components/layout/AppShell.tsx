@@ -217,10 +217,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {/* Sidebar */}
         <aside className="hidden w-[268px] shrink-0 border-r border-white/80 dark:border-slate-700 bg-white/92 dark:bg-slate-900/92 backdrop-blur-xl lg:flex lg:flex-col">
           <div className="flex h-16 items-center border-b border-slate-100 dark:border-slate-700 px-6">
-            <Link to="/" className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent-500 to-emerald-600 shadow-sm">
-                <span className="text-sm font-bold text-white">H</span>
-              </div>
+            <Link to="/" className="flex items-center">
               <span className="text-lg font-bold tracking-tight text-navy-900 dark:text-white">
                 Hack<span className="text-accent-600">ET</span>
               </span>
@@ -303,6 +300,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
+                onClick={toggleTheme}
+                className="rounded-xl p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all duration-200"
+                aria-label="Toggle theme"
+              >
+                {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+              <button
+                type="button"
                 onClick={() => setLocale(locale === 'en' ? 'am' : 'en')}
                 className="rounded-2xl px-2.5 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300"
               >
@@ -374,11 +379,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="mb-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {/* Brand */}
             <div className="lg:col-span-1">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent-500 to-emerald-600">
-                  <span className="text-sm font-bold text-white">H</span>
-                </div>
-                <span className="text-lg font-bold tracking-tight text-navy-900">
+              <div className="flex items-center mb-4">
+                <span className="text-lg font-bold tracking-tight text-navy-900 dark:text-white">
                   Hack<span className="text-accent-600">ET</span>
                 </span>
               </div>

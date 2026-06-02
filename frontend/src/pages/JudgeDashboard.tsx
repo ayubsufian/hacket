@@ -287,7 +287,7 @@ function JudgeDashboardInner() {
                             <div className="card-elevated p-6 border border-gray-100 dark:border-gray-700 bg-gradient-to-r from-white to-gray-50/50 dark:from-slate-800 dark:to-slate-800/50">
                                 <p className="section-title text-indigo-600 mb-4">Evaluate</p>
                                 {msg && (
-                                    <div className={`mb-4 flex items-center justify-between rounded-lg px-4 py-3 text-sm font-medium ${msg.type === 'ok' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                                    <div className={`mb-4 flex items-center justify-between rounded-lg px-4 py-3 text-sm font-medium ${msg.type === 'ok' ? 'bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300' : 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
                                         {msg.text}
                                         {msg.type === 'ok' && <CheckCircle size={16} />}
                                     </div>

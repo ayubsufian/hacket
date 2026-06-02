@@ -17,12 +17,12 @@ const ALL_STAFF_ROLES: { value: StaffRole; label: string }[] = [
 ]
 
 const ROLE_BADGE: Record<StaffRole, string> = {
-    JUDGE:          'bg-indigo-50 text-indigo-700 border-indigo-200',
-    MENTOR:         'bg-emerald-50 text-emerald-700 border-emerald-200',
-    TECHNICAL_LEAD: 'bg-violet-50 text-violet-700 border-violet-200',
-    LOGISTICS:      'bg-orange-50 text-orange-700 border-orange-200',
-    COMMUNICATIONS: 'bg-sky-50 text-sky-700 border-sky-200',
-    FINANCE:        'bg-rose-50 text-rose-700 border-rose-200',
+    JUDGE:          'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+    MENTOR:         'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+    TECHNICAL_LEAD: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800',
+    LOGISTICS:      'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800',
+    COMMUNICATIONS: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
+    FINANCE:        'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
 }
 
 export default function OrganizerDashboard() {

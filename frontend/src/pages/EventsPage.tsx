@@ -74,12 +74,13 @@ export default function EventsPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 hide-scrollbar">
+        <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 hide-scrollbar" role="group" aria-label="Filter by status">
           {['ALL', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'IN_PROGRESS', 'COMPLETED'].map(s => (
             <button
               key={s}
               onClick={() => setStatus(s)}
-              className={`rounded-full px-4 py-2 text-xs font-medium whitespace-nowrap transition-all ${status === s
+              aria-pressed={status === s}
+              className={`rounded-full px-4 py-2 text-xs font-medium whitespace-nowrap transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 ${status === s
                 ? 'bg-accent-500 text-white shadow-md shadow-accent-500/20'
                 : 'bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 dark:hover:border-gray-500 hover:shadow-sm'
               }`}

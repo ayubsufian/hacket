@@ -1,18 +1,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ArrowRight,
-  Search,
   Calendar,
   MapPin,
   Users,
   MonitorPlay,
   Tag,
-  Moon,
-  Sun,
 } from 'lucide-react'
 import { listEvents } from '../api/events'
-import { useTheme } from '../contexts/ThemeContext'
 import type { Hackathon } from '../types/models'
 
 const CARD_GRADIENTS = [
@@ -49,8 +44,7 @@ export default function LandingPage() {
   const [events, setEvents] = useState<Hackathon[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('ALL')
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     listEvents({ limit: 50 })
@@ -60,94 +54,11 @@ export default function LandingPage() {
   }, [])
 
   const filteredEvents = useMemo(() => {
-    return events.filter(ev => {
-      const matchesSearch = ev.title.toLowerCase().includes(search.toLowerCase()) ||
-        (ev.description?.toLowerCase() || '').includes(search.toLowerCase()) ||
-        (ev.tags?.some(tag => tag.toLowerCase().includes(search.toLowerCase())) ?? false)
-      const matchesStatus = statusFilter === 'ALL' || ev.status === statusFilter
-      return matchesSearch && matchesStatus
-    })
-  }, [events, search, statusFilter])
-
-  const activeCount = events.filter(e => e.status === 'IN_PROGRESS' || e.status === 'REGISTRATION_OPEN').length
-  const { resolvedTheme, toggleTheme } = useTheme()
+    return events
+  }, [events])
 
   return (
     <div className="min-h-screen bg-[#f8fafc] dark:bg-black">
-      {/* Header */}
-      <header className="bg-white dark:bg-black border-b border-gray-100 dark:border-slate-800 px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl flex items-center justify-between">
-          <Link to="/" className="flex items-center text-gray-900 dark:text-white hover:text-gray-700 dark:hover:text-gray-300">
-            <span className="text-lg font-bold tracking-tight">Hack<span className="text-emerald-500">ET</span></span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="flex items-center justify-center rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-gray-200 transition-all duration-200 shadow-sm"
-              aria-label="Toggle theme"
-            >
-              {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
-            <Link to="/login" className="hidden sm:inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-all duration-200">
-              Log in
-            </Link>
-            <Link to="/signup" className="inline-flex items-center justify-center rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 text-sm font-medium transition-colors">
-              Sign up
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* Hero - Simple */}
-      <section className="bg-white dark:bg-black border-b border-gray-100 dark:border-slate-800">
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white">
-                Find your next hackathon
-              </h1>
-              <p className="mt-2 text-gray-500 dark:text-gray-400">
-                {activeCount > 0 ? `${activeCount} events open now` : 'Discover upcoming events'} · Ethiopia's hackathon platform
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Link to="/events" className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-xl transition-colors">
-                Browse all <ArrowRight size={18} />
-              </Link>
-              <Link to="/signup" className="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-700 dark:text-gray-300 font-medium rounded-xl transition-colors">
-                Join free
-              </Link>
-            </div>
-          </div>
-
-          {/* Search Bar */}
-          <div className="mt-8 flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <input
-                type="text"
-                placeholder="Search hackathons by name, topic, or tag..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-              />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-            >
-              <option value="ALL">All Events</option>
-              <option value="REGISTRATION_OPEN">Open</option>
-              <option value="IN_PROGRESS">Live</option>
-              <option value="JUDGING">Judging</option>
-              <option value="COMPLETED">Ended</option>
-            </select>
-          </div>
-        </div>
-      </section>
-
       {/* Events Grid */}
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {loading ? (
@@ -165,14 +76,7 @@ export default function LandingPage() {
           </div>
         ) : filteredEvents.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-gray-500 dark:text-gray-400">
-              {search || statusFilter !== 'ALL' ? 'No events match your search' : 'No events available yet'}
-            </p>
-            {(search || statusFilter !== 'ALL') && (
-              <button onClick={() => { setSearch(''); setStatusFilter('ALL') }} className="mt-4 text-emerald-600 hover:text-emerald-700 font-medium">
-                Clear filters
-              </button>
-            )}
+            <p className="text-gray-500 dark:text-gray-400">No events available yet</p>
           </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -183,8 +87,13 @@ export default function LandingPage() {
                 className="group bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-200"
               >
                 <div className="relative h-40 overflow-hidden">
-                  {ev.coverImageUrl ? (
-                    <img src={ev.coverImageUrl} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  {ev.coverImageUrl && !failedImages.has(ev.id) ? (
+                    <img
+                      src={ev.coverImageUrl}
+                      alt={ev.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={() => setFailedImages(prev => new Set(prev).add(ev.id))}
+                    />
                   ) : (
                     <div className={`w-full h-full bg-gradient-to-br ${cardGradient(ev.title)} flex items-center justify-center`}>
                       <span className="text-white/30 font-black text-6xl select-none">{ev.title?.charAt(0).toUpperCase() || '?'}</span>
