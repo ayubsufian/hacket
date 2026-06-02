@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
+const { uploadsRoot } = require('../../utils/paths');
 
 const renameAsync = promisify(fs.rename);
 const mkdirAsync = promisify(fs.mkdir);
@@ -15,8 +16,7 @@ class StorageService {
   async moveToBlobStorage(tmpPath, targetKey) {
     if (!tmpPath || !targetKey) return null;
 
-    const baseUploadsDir = path.join(__dirname, '../../../../uploads');
-    const finalAbsolutePath = path.join(baseUploadsDir, targetKey);
+      const finalAbsolutePath = path.join(uploadsRoot, targetKey);
     const finalDir = path.dirname(finalAbsolutePath);
 
     try {
@@ -45,7 +45,7 @@ class StorageService {
    * Returns the absolute file system path for a given storage key.
    */
   getAbsolutePath(storageKey) {
-    return path.join(__dirname, '../../../../uploads', storageKey);
+    return path.join(uploadsRoot, storageKey);
   }
 }
 

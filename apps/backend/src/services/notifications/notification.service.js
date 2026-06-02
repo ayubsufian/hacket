@@ -5,6 +5,8 @@
 
 const prisma = require('../../config/database');
 const eventBus = require('../../utils/eventBus');
+const AppError = require('../../utils/AppError');
+const { normalizePagination, buildPagination } = require('../../utils/pagination');
 
 class NotificationService {
   constructor() {
@@ -85,8 +87,34 @@ class NotificationService {
     return {
       data,
       unreadCount,
-      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      pagination: buildPagination({ page, limit, total }),
     };
+  }
+
+  async getPreferences(userId) {
+    return prisma.userNotificationPreference.upsert({
+      where: { userId },
+      update: {},
+      create: { userId },
+    });
+  }
+
+  async updatePreferences(userId, data) {
+    const preferences = await prisma.userNotificationPreference.upsert({
+      where: { userId },
+      update: data,
+      create: { userId, ...data },
+    });
+
+    eventBus.emit('audit:log', {
+      actorId: userId,
+      action: 'NOTIFICATION_PREFERENCES_UPDATED',
+      entity: 'userNotificationPreference',
+      entityId: preferences.id,
+      details: data,
+    });
+
+    return preferences;
   }
 
   /**
@@ -121,9 +149,22 @@ class NotificationService {
   /**
    * Issue a digital certificate/badge.
    */
-  async issueCertificate({ userId, hackathonId, title, type, metadata }) {
-    const certificate = await prisma.certificate.create({
-      data: { userId, hackathonId, title, type, metadata },
+  async issueCertificate({ userId, hackathonId, title, type = 'CERTIFICATE', awardTier = 'participation', issuedBy = null, metadata }) {
+    const certificate = await prisma.certificate.upsert({
+      where: {
+        userId_hackathonId_type_awardTier: {
+          userId,
+          hackathonId,
+          type,
+          awardTier,
+        },
+      },
+      update: {
+        title,
+        metadata,
+        issuedBy,
+      },
+      create: { userId, hackathonId, title, type, awardTier, issuedBy, metadata },
     });
 
     // Notify user
@@ -207,7 +248,12 @@ class NotificationService {
           where: { id: broadcastId }
         });
 
-        if (!broadcast) return;
+        if (!broadcast || broadcast.status === 'CANCELLED') return;
+
+        await prisma.notificationBroadcast.update({
+          where: { id: broadcastId },
+          data: { status: 'RUNNING' },
+        });
 
         // Fetch all active participants in the hackathon, including their notification preferences
         const members = await prisma.teamMember.findMany({
@@ -233,7 +279,13 @@ class NotificationService {
         }
 
         const usersArray = Array.from(uniqueUsers.entries());
-        if (usersArray.length === 0) return;
+        if (usersArray.length === 0) {
+          await prisma.notificationBroadcast.update({
+            where: { id: broadcastId },
+            data: { status: 'SENT', sentAt: new Date() },
+          });
+          return;
+        }
 
         // 2026 Standard 1: Bulk Database Insert (In-App notifications always trigger)
         const notificationPayloads = usersArray.map(([userId]) => ({
@@ -266,8 +318,17 @@ class NotificationService {
           await Promise.allSettled(emailPromises);
         }
 
+        await prisma.notificationBroadcast.update({
+          where: { id: broadcastId },
+          data: { status: 'SENT', sentAt: new Date() },
+        });
+
         console.log(`[Notification Service] Successfully processed broadcast ${broadcastId} for ${usersArray.length} users (${emailRecipients.length} emails sent).`);
       } catch (err) {
+        await prisma.notificationBroadcast.update({
+          where: { id: broadcastId },
+          data: { status: 'FAILED', error: { message: err.message } },
+        }).catch(() => {});
         console.error('[Notification Service] Failed to process broadcast:', err);
       }
     });
@@ -344,7 +405,7 @@ class NotificationService {
             title: `🏆 Final Scores & Feedback Released!`,
             message: `The final scores and judge feedback for "${title}" are now available on your dashboard.`,
             type: 'SCORE_PUBLISHED',
-            sentBy: releasedBy
+            createdBy: releasedBy
           }
         });
 
@@ -372,7 +433,7 @@ class NotificationService {
         title,
         message,
         type,
-        sentBy
+        createdBy: sentBy
       }
     });
 
@@ -381,6 +442,70 @@ class NotificationService {
     eventBus.emit('notification:broadcast_created', { broadcastId: broadcast.id, hackathonId });
 
     return broadcast;
+  }
+
+  async listBroadcasts(hackathonId, query = {}) {
+    const { page, limit, skip } = normalizePagination(query, { defaultLimit: 20, maxLimit: 100 });
+    const where = { hackathonId };
+    if (query.status) where.status = query.status;
+
+    const [total, data] = await prisma.$transaction([
+      prisma.notificationBroadcast.count({ where }),
+      prisma.notificationBroadcast.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          createdByUser: { select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } } },
+          _count: { select: { notifications: true } },
+        },
+      }),
+    ]);
+
+    return { data, pagination: buildPagination({ page, limit, total }) };
+  }
+
+  async cancelBroadcast({ broadcastId, actor, reason }) {
+    const broadcast = await prisma.notificationBroadcast.findUnique({
+      where: { id: broadcastId },
+      include: { hackathon: { select: { organizerId: true } } },
+    });
+    if (!broadcast) throw new AppError('Broadcast not found.', 404);
+    if (!['QUEUED', 'RUNNING'].includes(broadcast.status)) {
+      throw new AppError('Only queued or running broadcasts can be cancelled.', 409);
+    }
+
+    if (actor.role !== 'ADMIN' && broadcast.hackathon?.organizerId !== actor.id) {
+      const staff = await prisma.staffAssignment.findFirst({
+        where: {
+          userId: actor.id,
+          hackathonId: broadcast.hackathonId,
+          isActive: true,
+          staffRole: { in: ['CO_ORGANIZER', 'COMMUNICATIONS'] },
+        },
+      });
+      if (!staff) throw new AppError('You do not have access to cancel this broadcast.', 403);
+    }
+
+    const updated = await prisma.notificationBroadcast.update({
+      where: { id: broadcastId },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancellationReason: reason || null,
+      },
+    });
+
+    eventBus.emit('audit:log', {
+      actorId: actor.id,
+      action: 'BROADCAST_CANCELLED',
+      entity: 'notificationBroadcast',
+      entityId: broadcastId,
+      details: { reason: reason || null },
+    });
+
+    return updated;
   }
 }
 

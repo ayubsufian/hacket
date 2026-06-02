@@ -16,9 +16,28 @@ exports.getNotifications = catchAsync(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data: result.data,
+    data: { notifications: result.data },
     unreadCount: result.unreadCount,
     pagination: result.pagination,
+  });
+});
+
+exports.getPreferences = catchAsync(async (req, res) => {
+  const preferences = await notificationService.getPreferences(req.user.id);
+
+  res.status(200).json({
+    success: true,
+    data: { preferences },
+  });
+});
+
+exports.updatePreferences = catchAsync(async (req, res) => {
+  const preferences = await notificationService.updatePreferences(req.user.id, req.body);
+
+  res.status(200).json({
+    success: true,
+    message: 'Notification preferences updated.',
+    data: { preferences },
   });
 });
 
@@ -56,5 +75,29 @@ exports.createBroadcast = catchAsync(async (req, res) => {
     success: true,
     message: 'Broadcast announcement queued successfully.',
     data: { broadcast }
+  });
+});
+
+exports.listBroadcasts = catchAsync(async (req, res) => {
+  const result = await notificationService.listBroadcasts(req.params.eventId, req.query);
+
+  res.status(200).json({
+    success: true,
+    data: { broadcasts: result.data },
+    pagination: result.pagination,
+  });
+});
+
+exports.cancelBroadcast = catchAsync(async (req, res) => {
+  const broadcast = await notificationService.cancelBroadcast({
+    broadcastId: req.params.broadcastId,
+    actor: req.user,
+    reason: req.body.reason,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Broadcast cancelled.',
+    data: { broadcast },
   });
 });

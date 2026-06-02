@@ -40,7 +40,7 @@ exports.logTranslationError = catchAsync(async (req, res) => {
 });
 
 exports.getReport = catchAsync(async (req, res) => {
-  const report = await withTimeout(analyticsService.getReport(req.params.hackathonId));
+  const report = await withTimeout(analyticsService.getReport(req.params.hackathonId, req.query));
 
   // AF2: Check for missing or incomplete data
   let metadata = undefined;
@@ -56,12 +56,31 @@ exports.getReport = catchAsync(async (req, res) => {
 });
 
 exports.exportReport = catchAsync(async (req, res) => {
-  const { format } = req.query;
+  const format = (req.query.format || '').toLowerCase();
   const { hackathonId } = req.params;
 
   try {
+    if (await analyticsService.shouldUseAsyncExport(hackathonId)) {
+      const job = await analyticsService.createReportJob({
+        hackathonId,
+        createdBy: req.user.id,
+        format: (format || 'csv').toUpperCase(),
+        parameters: req.query,
+      });
+
+      return res.status(202).json({
+        success: true,
+        message: 'Large report export queued. Poll the report job status endpoint for progress.',
+        data: { job },
+      });
+    }
+
+    res.set('Deprecation', 'true');
+    res.set('Sunset', '2026-12-31');
+    res.set('Link', `</api/v1/analytics/${hackathonId}/reports>; rel="successor-version"`);
+
     if (format === 'pdf') {
-      const pdfBuffer = await withTimeout(analyticsService.generatePDF(hackathonId));
+      const pdfBuffer = await withTimeout(analyticsService.generatePDF(hackathonId, req.query));
       res.set({
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="hacket-report-${hackathonId}.pdf"`,
@@ -71,7 +90,7 @@ exports.exportReport = catchAsync(async (req, res) => {
     }
 
     if (format === 'csv') {
-      const csvString = await withTimeout(analyticsService.generateCSV(hackathonId));
+      const csvString = await withTimeout(analyticsService.generateCSV(hackathonId, req.query));
       res.set({
         'Content-Type': 'text/csv',
         'Content-Disposition': `attachment; filename="hacket-report-${hackathonId}.csv"`,
@@ -95,7 +114,7 @@ exports.exportReport = catchAsync(async (req, res) => {
   }
 
   // Default: JSON
-  const report = await withTimeout(analyticsService.getReport(hackathonId));
+  const report = await withTimeout(analyticsService.getReport(hackathonId, req.query));
   
   // AF2 logic applies to JSON export as well
   let metadata = undefined;
@@ -107,5 +126,91 @@ exports.exportReport = catchAsync(async (req, res) => {
     success: true,
     ...(metadata && { metadata }),
     data: { report },
+  });
+});
+
+exports.createReportJob = catchAsync(async (req, res) => {
+  const { hackathonId } = req.params;
+  const parameters = {
+    ...req.body.parameters,
+    from: req.body.from,
+    to: req.body.to,
+    fields: req.body.fields,
+  };
+
+  const job = await analyticsService.createReportJob({
+    hackathonId,
+    createdBy: req.user.id,
+    format: req.body.format.toUpperCase(),
+    parameters,
+  });
+
+  res.status(202).json({
+    success: true,
+    message: 'Report generation queued.',
+    data: { job },
+  });
+});
+
+exports.getReportJobStatus = catchAsync(async (req, res) => {
+  const job = await analyticsService.getReportJobStatus(
+    req.params.hackathonId,
+    req.params.jobId
+  );
+
+  res.status(200).json({
+    success: true,
+    data: { job },
+  });
+});
+
+exports.downloadReport = catchAsync(async (req, res) => {
+  const file = await analyticsService.getReportDownload({
+    hackathonId: req.params.hackathonId,
+    jobId: req.params.jobId,
+    token: req.query.token,
+  });
+
+  res.set({
+    'Content-Type': file.mimeType,
+    'Content-Disposition': `attachment; filename="${file.filename}"`,
+  });
+  res.sendFile(file.absolutePath);
+});
+
+exports.listSnapshots = catchAsync(async (req, res) => {
+  const result = await analyticsService.listSnapshots(req.params.hackathonId, req.query);
+
+  res.status(200).json({
+    success: true,
+    data: { snapshots: result.data },
+    pagination: result.pagination,
+  });
+});
+
+exports.getSnapshot = catchAsync(async (req, res) => {
+  const snapshot = await analyticsService.getSnapshot(
+    req.params.hackathonId,
+    req.params.snapshotId
+  );
+
+  res.status(200).json({
+    success: true,
+    data: { snapshot },
+  });
+});
+
+exports.createSnapshot = catchAsync(async (req, res) => {
+  const snapshot = await analyticsService.createSnapshot({
+    hackathonId: req.params.hackathonId,
+    computedBy: req.user.id,
+    snapshotType: req.body.snapshotType,
+    expiresAt: req.body.expiresAt,
+  });
+
+  res.status(202).json({
+    success: true,
+    message: 'Analytics snapshot computed.',
+    data: { snapshot },
   });
 });

@@ -153,6 +153,28 @@ enum AuditAction {
   JUDGING_CRITERIA_UPDATED
   JUDGING_CRITERIA_DELETED
   JUDGING_ASSIGNMENT_DELETED
+  USER_ROLE_CHANGED
+  HACKATHON_STATUS_CHANGED
+  JOB_CANCELLED
+  SEARCH_REINDEX_REQUESTED
+  CERTIFICATE_DOWNLOADED
+  CERTIFICATE_REVOKED
+  CERTIFICATE_REGENERATE_REQUESTED
+  DISCUSSION_UPDATED
+  DISCUSSION_DELETED
+  DISCUSSION_COMMENT_UPDATED
+  DISCUSSION_COMMENT_DELETED
+  DISCUSSION_STATUS_CHANGED
+  DISCUSSION_PINNED
+  DISCUSSION_UNPINNED
+  DISCUSSION_FLAGGED
+  FEEDBACK_VIEWED
+  NOTIFICATION_PREFERENCES_UPDATED
+  BROADCAST_CANCELLED
+  ORGANIZATION_LOGO_UPDATED
+  PROFILE_AVATAR_UPDATED
+  STORAGE_FILE_UPLOADED
+  STORAGE_FILE_DELETED
 }
 
 enum StaffRole {
@@ -240,6 +262,7 @@ enum JobStatus {
   RUNNING
   COMPLETED
   FAILED
+  CANCELLED
 }
 
 enum SnapshotType {
@@ -287,6 +310,21 @@ enum TeamMemberRole {
 enum OrgMemberRole {
   ADMIN
   MEMBER
+}
+
+enum NotificationBroadcastStatus {
+  QUEUED
+  RUNNING
+  SENT
+  CANCELLED
+  FAILED
+}
+
+enum ModerationFlagStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+  ACTIONED
 }
 
 // =============================================================================
@@ -760,6 +798,8 @@ model CertificateIssuanceJob {
   createdByUser User?             @relation("CertificateIssuanceJobCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   status        JobStatus @default(PENDING)
   payload       Json?
+  cancelledAt   DateTime?          @map("cancelled_at")
+  cancellationReason String?       @map("cancellation_reason")
   createdAt     DateTime          @default(now()) @map("created_at")
 
   // Relations
@@ -825,15 +865,23 @@ model NotificationTemplate {
 }
 
 model NotificationBroadcast {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hackathonId   String?   @map("hackathon_id") @db.Uuid
-  templateId    String?   @map("template_id") @db.Uuid
-  triggerRule   String?   @map("trigger_rule")
-  createdBy     String?   @map("created_by") @db.Uuid
-  createdByUser User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-  scheduledAt   DateTime? @map("scheduled_at")
-  payload       Json?
-  createdAt     DateTime  @default(now()) @map("created_at")
+  id                 String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hackathonId        String?                     @map("hackathon_id") @db.Uuid
+  templateId         String?                     @map("template_id") @db.Uuid
+  triggerRule        String?                     @map("trigger_rule")
+  title              String?                     @db.VarChar(255)
+  message            String?                     @db.Text
+  type               NotificationType            @default(ANNOUNCEMENT)
+  status             NotificationBroadcastStatus @default(QUEUED)
+  createdBy          String?                     @map("created_by") @db.Uuid
+  createdByUser      User?                       @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  scheduledAt        DateTime?                   @map("scheduled_at")
+  sentAt             DateTime?                   @map("sent_at")
+  cancelledAt        DateTime?                   @map("cancelled_at")
+  cancellationReason String?                     @map("cancellation_reason") @db.Text
+  error              Json?
+  payload            Json?
+  createdAt          DateTime                    @default(now()) @map("created_at")
 
   // Relations
   hackathon     Hackathon?            @relation(fields: [hackathonId], references: [id], onDelete: SetNull)
@@ -841,6 +889,7 @@ model NotificationBroadcast {
   notifications Notification[]        @relation("BroadcastNotifications")
 
   @@index([triggerRule])
+  @@index([hackathonId, status])
   @@map("notification_broadcasts")
 }
 
@@ -886,6 +935,8 @@ model AnalyticsJob {
   startedAt     DateTime?
   completedAt   DateTime?
   error         Json?
+  cancelledAt   DateTime?          @map("cancelled_at")
+  cancellationReason String?       @map("cancellation_reason")
   createdAt     DateTime           @default(now()) @map("created_at")
 
   // Relations
@@ -1000,6 +1051,8 @@ model ArchiveJob {
   startedAt   DateTime?
   completedAt DateTime?
   error       Json?
+  cancelledAt DateTime?            @map("cancelled_at")
+  cancellationReason String?       @map("cancellation_reason")
   createdAt   DateTime           @default(now()) @map("created_at")
 
   // Relations
@@ -1370,6 +1423,8 @@ model Discussion {
   isArchived  Boolean          @default(false) @map("is_archived")
   archivedAt  DateTime?        @map("archived_at")
   archivedBy  String?          @map("archived_by") @db.Uuid
+  deletedAt   DateTime?        @map("deleted_at")
+  deletedBy   String?          @map("deleted_by") @db.Uuid
 
   // Relations
   hackathon      Hackathon           @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
@@ -1403,11 +1458,55 @@ model DiscussionComment {
   isArchived Boolean             @default(false) @map("is_archived")
   archivedAt DateTime?           @map("archived_at")
   archivedBy String?             @map("archived_by") @db.Uuid
+  deletedAt  DateTime?           @map("deleted_at")
+  deletedBy  String?             @map("deleted_by") @db.Uuid
 
   @@index([discussionId])
   @@index([authorId])
   @@index([parentId])
   @@map("discussion_comments")
+}
+
+model DiscussionFlag {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporterId   String               @map("reporter_id") @db.Uuid
+  discussionId String?              @map("discussion_id") @db.Uuid
+  commentId    String?              @map("comment_id") @db.Uuid
+  reason       String               @db.VarChar(100)
+  details      String?              @db.Text
+  status       ModerationFlagStatus @default(PENDING)
+  reviewedBy   String?              @map("reviewed_by") @db.Uuid
+  reviewedAt   DateTime?            @map("reviewed_at")
+  createdAt    DateTime             @default(now()) @map("created_at")
+
+  @@index([discussionId])
+  @@index([commentId])
+  @@index([reporterId])
+  @@index([status])
+  @@map("discussion_flags")
+}
+
+model StoredFile {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storageKey  String    @unique @map("storage_key") @db.Text
+  folder      String    @db.VarChar(60)
+  entityId    String    @map("entity_id") @db.Uuid
+  filename    String    @db.VarChar(255)
+  ownerId     String?   @map("owner_id") @db.Uuid
+  mimeType    String?   @map("mime_type")
+  fileSize    Int?      @map("file_size")
+  checksum    String?
+  accessLevel String    @default("PUBLIC") @map("access_level") @db.VarChar(30)
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedBy   String?   @map("deleted_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([folder, entityId])
+  @@index([ownerId])
+  @@index([isDeleted])
+  @@map("stored_files")
 }
 
 // =============================================================================

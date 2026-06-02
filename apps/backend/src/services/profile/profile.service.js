@@ -6,6 +6,17 @@ const prisma = require('../../config/database');
 const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
 const { redisClient } = require('../../config/redis');
+const path = require('path');
+const storageService = require('../storage/storage.service');
+
+const ALLOWED_SKILLS = new Set([
+  'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'go', 'rust', 'php', 'ruby',
+  'react', 'vue', 'angular', 'node.js', 'express', 'django', 'flask', 'spring', 'laravel',
+  'html', 'css', 'tailwind', 'sql', 'postgresql', 'mysql', 'mongodb', 'redis',
+  'machine learning', 'ai', 'data science', 'data analysis', 'cybersecurity', 'cloud',
+  'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'devops', 'ui/ux', 'figma',
+  'product management', 'business', 'pitching', 'iot', 'mobile', 'flutter', 'react native',
+]);
 
 class ProfileService {
   /**
@@ -161,6 +172,9 @@ class ProfileService {
         throw new AppError('A valid last name is required.', 400);
       }
     }
+    if (Object.prototype.hasOwnProperty.call(normalizedData, 'skills')) {
+      normalizedData.skills = this._normalizeSkills(normalizedData.skills);
+    }
 
     const updatedProfile = await prisma.userProfile.update({
       where: { userId },
@@ -182,6 +196,35 @@ class ProfileService {
     }
 
     return updatedProfile;
+  }
+
+  async uploadAvatar(userId, file, req) {
+    if (!file) {
+      throw new AppError('Avatar file is required.', 400);
+    }
+
+    const extension = path.extname(file.originalname || '').toLowerCase() || '.png';
+    const filename = `avatar-${Date.now()}${extension}`;
+    const storageKey = `/profiles/${userId}/${filename}`;
+    await this._scanFileOrThrow(file.path);
+    await storageService.moveToBlobStorage(file.path, storageKey);
+
+    const avatarUrl = `${req.protocol}://${req.get('host')}/api/v1/storage/profiles/${userId}/${filename}`;
+    const profile = await prisma.userProfile.update({
+      where: { userId },
+      data: { avatarUrl },
+    });
+
+    eventBus.emit('audit:log', {
+      actorId: userId,
+      action: 'PROFILE_AVATAR_UPDATED',
+      entity: 'userProfile',
+      entityId: profile.id,
+      details: { storageKey },
+    });
+
+    await this._clearProfileCaches(userId);
+    return profile;
   }
 
   /**
@@ -270,6 +313,38 @@ class ProfileService {
     }
 
     return user;
+  }
+
+  _normalizeSkills(skills = []) {
+    const normalized = [...new Set(skills.map((skill) => String(skill).trim()).filter(Boolean))];
+    const invalid = normalized.filter((skill) => !ALLOWED_SKILLS.has(skill.toLowerCase()));
+    if (invalid.length > 0) {
+      throw new AppError(`Unsupported skill value(s): ${invalid.join(', ')}.`, 400);
+    }
+    return normalized;
+  }
+
+  async _clearProfileCaches(userId) {
+    try {
+      await redisClient.del(`user:profile:v2:${userId}`);
+      await redisClient.del(`user:profile:${userId}`);
+      await redisClient.del(`user:profile:public:${userId}`);
+    } catch (err) {
+      console.warn('[Profile] Redis cache del error:', err.message);
+    }
+  }
+
+  async _scanFileOrThrow(filePath) {
+    const scanner = process.env.VIRUS_SCANNER_COMMAND;
+    if (!scanner) return;
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    try {
+      await execFileAsync(scanner, [filePath], { timeout: 30000 });
+    } catch (err) {
+      throw new AppError('File failed security scanning.', 422);
+    }
   }
 }
 

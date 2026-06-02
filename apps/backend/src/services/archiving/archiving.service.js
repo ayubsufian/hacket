@@ -8,10 +8,11 @@ const path = require('path');
 const prisma = require('../../config/database');
 const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
+const { archiveUploadsRoot } = require('../../utils/paths');
 
 class ArchivingService {
   constructor() {
-    this.archiveDir = path.join(__dirname, '../../../../uploads/archives');
+    this.archiveDir = archiveUploadsRoot;
   }
 
   /**

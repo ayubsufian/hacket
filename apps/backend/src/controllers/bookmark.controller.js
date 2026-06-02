@@ -29,10 +29,33 @@ exports.removeBookmark = catchAsync(async (req, res) => {
 });
 
 exports.getMyBookmarks = catchAsync(async (req, res) => {
-  const bookmarks = await bookmarkService.getMyBookmarks(req.user.id);
+  const result = await bookmarkService.getMyBookmarks(req.user.id, req.query);
 
   res.status(200).json({
     success: true,
-    data: { bookmarks },
+    data: { bookmarks: result.data },
+    pagination: result.pagination,
+  });
+});
+
+exports.checkBookmark = catchAsync(async (req, res) => {
+  const bookmark = await bookmarkService.checkBookmark(req.user.id, req.params.organizationId);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      bookmarked: Boolean(bookmark),
+      id: bookmark?.id || null,
+    },
+  });
+});
+
+exports.bulkAddBookmarks = catchAsync(async (req, res) => {
+  const result = await bookmarkService.bulkAddBookmarks(req.user.id, req.body.organizationIds);
+
+  res.status(201).json({
+    success: true,
+    message: `Added ${result.createdCount} bookmark(s).`,
+    data: result,
   });
 });

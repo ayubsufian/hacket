@@ -6,11 +6,23 @@
 
 const { Router } = require('express');
 const Joi = require('joi');
+const multer = require('multer');
 const organizationController = require('../controllers/organization.controller');
 const authenticate = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const { tmpUploadsRoot } = require('../utils/paths');
 
 const router = Router();
+const upload = multer({
+  dest: tmpUploadsRoot,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype)) {
+      return cb(new Error('Logo must be a JPEG, PNG, WebP, or GIF image.'));
+    }
+    cb(null, true);
+  },
+});
 
 // ── Validation Schemas ──────────────────────────────────────────────────
 
@@ -26,11 +38,17 @@ const updateOrganizationSchema = Joi.object({
   region: Joi.string().max(100).allow(null, ''),
 });
 
+const idParamSchema = Joi.object({
+  id: Joi.string().uuid().required(),
+});
+
 // ── Routes ──────────────────────────────────────────────────────────────
 
-router.use(authenticate); // Protect all organization routes
-
-router.get('/me', organizationController.getMe);
-router.patch('/me', validate(updateOrganizationSchema), organizationController.updateMe);
+router.get('/', organizationController.listPublic);
+router.get('/me', authenticate, organizationController.getMe);
+router.patch('/me', authenticate, validate(updateOrganizationSchema), organizationController.updateMe);
+router.post('/me/logo', authenticate, upload.single('logo'), organizationController.uploadLogo);
+router.get('/:id/hackathons', validate(idParamSchema, 'params'), organizationController.listHackathons);
+router.get('/:id', validate(idParamSchema, 'params'), organizationController.getPublicById);
 
 module.exports = router;
