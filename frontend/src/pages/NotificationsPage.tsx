@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Bell, Check, Globe } from 'lucide-react'
 import { getNotifications, markAllAsRead, markAsRead, type Notification } from '../api/notifications'
+import { NotificationIcon, getNotificationLabel } from '../components/notifications/NotificationIcon'
 
 export default function NotificationsPage() {
     const [notifs, setNotifs] = useState<Notification[]>([])
@@ -71,12 +72,23 @@ export default function NotificationsPage() {
                 {notifs?.length === 0 ? <div className="p-10 text-center text-gray-500 dark:text-gray-400">You're all caught up!</div> : (
                     notifs?.map(n => (
                         <div key={n.id} onClick={() => void markRead(n.id, n.isRead)}
-                            className={`p-5 transition-colors cursor-pointer group flex items-start gap-4 ${n.isRead ? 'opacity-70 hover:opacity-100 hover:bg-gray-50/50 dark:hover:bg-slate-700/30' : 'bg-blue-50/30 dark:bg-blue-900/10 hover:bg-blue-50/60 dark:hover:bg-blue-900/20'}`}>
-                            <div className={`mt-1 h-3 w-3 rounded-full shrink-0 transition-opacity ${n.isRead ? 'bg-transparent border-2 border-gray-300 dark:border-gray-600' : 'bg-blue-500 border border-blue-600 shadow-[0_0_8px_rgba(59,130,246,0.5)]'}`} />
-                            <div className="flex-1">
-                                <p className={`text-sm ${n.isRead ? 'text-gray-700 dark:text-gray-300' : 'text-gray-900 dark:text-gray-100 font-semibold'}`}>{n.message}</p>
-                                <div className="mt-2 text-xs text-gray-400 dark:text-gray-500 font-medium">
-                                    {n.createdAt ? new Date(n.createdAt).toLocaleString() : '—'}
+                            className={`p-5 transition-colors cursor-pointer group ${n.isRead ? 'opacity-70 hover:opacity-100 hover:bg-gray-50/50 dark:hover:bg-slate-700/30' : 'bg-blue-50/30 dark:bg-blue-900/10 hover:bg-blue-50/60 dark:hover:bg-blue-900/20'}`}>
+                            <div className="flex items-start gap-4">
+                                <NotificationIcon type={n.type} size={18} />
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${n.isRead ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'}`}>
+                                            {getNotificationLabel(n.type)}
+                                        </span>
+                                        {!n.isRead && <span className="h-2 w-2 rounded-full bg-blue-500" />}
+                                    </div>
+                                    <p className={`text-sm ${n.isRead ? 'text-gray-700 dark:text-gray-300' : 'text-gray-900 dark:text-gray-100 font-medium'}`}>
+                                        {n.title}
+                                    </p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{n.message}</p>
+                                    <div className="mt-2 text-xs text-gray-400 dark:text-gray-500 font-medium">
+                                        {n.createdAt ? new Date(n.createdAt).toLocaleString() : '—'}
+                                    </div>
                                 </div>
                             </div>
                         </div>

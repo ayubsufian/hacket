@@ -17,6 +17,7 @@ import SubmissionsPage from './pages/SubmissionsPage'
 import LeaderboardPage from './pages/LeaderboardPage'
 import JudgeDashboard from './pages/JudgeDashboard'
 import NotificationsPage from './pages/NotificationsPage'
+import ProfilePage from './pages/ProfilePage'
 import AdminPage from './pages/AdminPage'
 import OrganizerDashboard from './pages/OrganizerDashboard'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
@@ -45,6 +46,8 @@ function App() {
               <Route path="/teams" element={<ProtectedRoute><TeamsPage /></ProtectedRoute>} />
               <Route path="/submissions" element={<ProtectedRoute><SubmissionsPage /></ProtectedRoute>} />
               <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+              <Route path="/profile/:userId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
 
               {/* Role-restricted */}
               <Route path="/judge" element={<ProtectedRoute roles={['JUDGE', 'MENTOR', 'ADMIN']}><JudgeDashboard /></ProtectedRoute>} />
