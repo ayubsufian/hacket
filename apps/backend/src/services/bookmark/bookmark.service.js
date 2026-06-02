@@ -5,6 +5,7 @@
 const prisma = require('../../config/database');
 const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
+const { normalizePagination, buildPagination } = require('../../utils/pagination');
 
 const MAX_BOOKMARKS = 100;
 
@@ -100,26 +101,86 @@ class BookmarkService {
   /**
    * Fetch user's bookmarks
    */
-  async getMyBookmarks(userId) {
-    const bookmarks = await prisma.bookmark.findMany({
-      where: { userId },
-      include: {
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            logoUrl: true,
-            description: true,
+  async getMyBookmarks(userId, query = {}) {
+    const { page, limit, skip } = normalizePagination(query, { defaultLimit: 20, maxLimit: 100 });
+    const where = { userId };
+
+    const [total, data] = await prisma.$transaction([
+      prisma.bookmark.count({ where }),
+      prisma.bookmark.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              logoUrl: true,
+              description: true,
+              city: true,
+              region: true,
+            },
           },
         },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+    ]);
+
+    return {
+      data,
+      pagination: buildPagination({ page, limit, total }),
+    };
+  }
+
+  async checkBookmark(userId, organizationId) {
+    return prisma.bookmark.findUnique({
+      where: {
+        userId_organizationId: {
+          userId,
+          organizationId,
+        },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      select: { id: true },
+    });
+  }
+
+  async bulkAddBookmarks(userId, organizationIds) {
+    const uniqueOrganizationIds = [...new Set(organizationIds)];
+    const organizations = await prisma.organization.findMany({
+      where: { id: { in: uniqueOrganizationIds } },
+      select: { id: true },
+    });
+    const foundIds = new Set(organizations.map((organization) => organization.id));
+    const missingIds = uniqueOrganizationIds.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) {
+      throw new AppError('One or more organizations were not found.', 404);
+    }
+
+    const currentCount = await prisma.bookmark.count({ where: { userId } });
+    if (currentCount + uniqueOrganizationIds.length > MAX_BOOKMARKS) {
+      throw new AppError('Bulk add would exceed the maximum number of favorites.', 400);
+    }
+
+    const result = await prisma.bookmark.createMany({
+      data: uniqueOrganizationIds.map((organizationId) => ({ userId, organizationId })),
+      skipDuplicates: true,
     });
 
-    return bookmarks;
+    eventBus.emit('audit:log', {
+      actorId: userId,
+      action: 'CREATE',
+      entity: 'bookmark',
+      details: { organizationIds: uniqueOrganizationIds, createdCount: result.count },
+    });
+
+    return {
+      createdCount: result.count,
+      organizationIds: uniqueOrganizationIds,
+    };
   }
 }
 

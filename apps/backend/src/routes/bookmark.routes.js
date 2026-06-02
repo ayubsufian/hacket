@@ -19,11 +19,27 @@ const organizationParamSchema = Joi.object({
   organizationId: Joi.string().uuid().required(),
 });
 
+const bulkOrganizationSchema = Joi.object({
+  organizationIds: Joi.array().items(Joi.string().uuid()).min(1).max(50).required(),
+});
+
 // ── Routes ──────────────────────────────────────────────────────────────
 
 router.use(authenticate); // Protect all bookmark routes
 
 router.get('/', bookmarkController.getMyBookmarks);
+
+router.get(
+  '/organizations/:organizationId/check',
+  validate(organizationParamSchema, 'params'),
+  bookmarkController.checkBookmark
+);
+
+router.post(
+  '/organizations/bulk',
+  validate(bulkOrganizationSchema),
+  bookmarkController.bulkAddBookmarks
+);
 
 router.post(
   '/organizations/:organizationId',

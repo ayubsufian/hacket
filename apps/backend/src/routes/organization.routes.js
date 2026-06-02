@@ -26,11 +26,16 @@ const updateOrganizationSchema = Joi.object({
   region: Joi.string().max(100).allow(null, ''),
 });
 
+const idParamSchema = Joi.object({
+  id: Joi.string().uuid().required(),
+});
+
 // ── Routes ──────────────────────────────────────────────────────────────
 
-router.use(authenticate); // Protect all organization routes
-
-router.get('/me', organizationController.getMe);
-router.patch('/me', validate(updateOrganizationSchema), organizationController.updateMe);
+router.get('/', organizationController.listPublic);
+router.get('/me', authenticate, organizationController.getMe);
+router.patch('/me', authenticate, validate(updateOrganizationSchema), organizationController.updateMe);
+router.get('/:id/hackathons', validate(idParamSchema, 'params'), organizationController.listHackathons);
+router.get('/:id', validate(idParamSchema, 'params'), organizationController.getPublicById);
 
 module.exports = router;

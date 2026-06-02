@@ -1,11 +1,31 @@
 const { Router } = require('express');
+const multer = require('multer');
 const storageController = require('../controllers/storage.controller');
 const authenticate = require('../middleware/auth');
+const { uploadLimiter } = require('../middleware/rateLimiter');
 
 const router = Router();
+const upload = multer({
+  dest: 'uploads/tmp',
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
 
 // ── Authenticated Only ──────────────────────────────────────────────────
 // Submission artifacts require event-scoped authorization.
+router.post(
+  '/upload/:folder',
+  authenticate,
+  uploadLimiter,
+  upload.single('file'),
+  storageController.upload
+);
+
+router.delete(
+  '/:folder/:entityId/:filename',
+  authenticate,
+  storageController.deleteBlob
+);
+
 router.get(
   '/submissions/:entityId/:filename',
   authenticate,

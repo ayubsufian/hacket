@@ -3,6 +3,7 @@
 // =============================================================================
 
 const profileService = require('../services/profile/profile.service');
+const teamsService = require('../services/teams/teams.service');
 const catchAsync = require('../utils/catchAsync');
 
 exports.getMe = catchAsync(async (req, res) => {
@@ -21,6 +22,26 @@ exports.updateProfile = catchAsync(async (req, res) => {
     success: true,
     message: 'Profile updated successfully.',
     data: { profile: updatedProfile },
+  });
+});
+
+exports.uploadAvatar = catchAsync(async (req, res) => {
+  const profile = await profileService.uploadAvatar(req.user.id, req.file, req);
+
+  res.status(200).json({
+    success: true,
+    message: 'Avatar uploaded successfully.',
+    data: { avatarUrl: profile.avatarUrl, profile },
+  });
+});
+
+exports.getMyTeams = catchAsync(async (req, res) => {
+  const result = await teamsService.getMine(req.user.id, req.query);
+
+  res.status(200).json({
+    success: true,
+    data: { teams: result.data },
+    pagination: result.pagination,
   });
 });
 
