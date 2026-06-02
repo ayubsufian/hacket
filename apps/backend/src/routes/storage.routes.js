@@ -3,10 +3,11 @@ const multer = require('multer');
 const storageController = require('../controllers/storage.controller');
 const authenticate = require('../middleware/auth');
 const { uploadLimiter } = require('../middleware/rateLimiter');
+const { tmpUploadsRoot } = require('../utils/paths');
 
 const router = Router();
 const upload = multer({
-  dest: 'uploads/tmp',
+  dest: tmpUploadsRoot,
   limits: { fileSize: 50 * 1024 * 1024 },
 });
 
@@ -24,6 +25,12 @@ router.delete(
   '/:folder/:entityId/:filename',
   authenticate,
   storageController.deleteBlob
+);
+
+router.get(
+  '/:folder/:entityId/:filename/signed-url',
+  authenticate,
+  storageController.createSignedUrl
 );
 
 router.get(

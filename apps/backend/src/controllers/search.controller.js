@@ -10,8 +10,9 @@ const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
 const { performance } = require('perf_hooks');
 const { redisClient } = require('../config/redis');
+const { archiveUploadsRoot } = require('../utils/paths');
 
-const ARCHIVE_DIR = path.join(__dirname, '../../../../uploads/archives');
+const ARCHIVE_DIR = archiveUploadsRoot;
 
 /**
  * Perform a concurrent federated search.

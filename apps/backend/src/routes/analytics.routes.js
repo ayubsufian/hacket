@@ -13,6 +13,20 @@ const validate = require('../middleware/validate');
 
 const router = Router();
 
+const hackathonParamSchema = Joi.object({
+  hackathonId: Joi.string().uuid().required(),
+});
+
+const reportJobParamSchema = Joi.object({
+  hackathonId: Joi.string().uuid().required(),
+  jobId: Joi.string().uuid().required(),
+});
+
+const snapshotParamSchema = Joi.object({
+  hackathonId: Joi.string().uuid().required(),
+  snapshotId: Joi.string().uuid().required(),
+});
+
 // ── Public Telemetry Routes (UC0025) ────────────────────────────────────
 
 const translationErrorSchema = Joi.object({
@@ -44,15 +58,15 @@ const snapshotSchema = Joi.object({
   expiresAt: Joi.date().iso().allow(null),
 });
 
-router.get('/:hackathonId/report', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.getReport);
-router.get('/:hackathonId/export', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.exportReport);
+router.get('/:hackathonId/report', validate(hackathonParamSchema, 'params'), authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.getReport);
+router.get('/:hackathonId/export', validate(hackathonParamSchema, 'params'), authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.exportReport);
 
-router.post('/:hackathonId/reports', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), validate(reportJobSchema), analyticsController.createReportJob);
-router.get('/:hackathonId/reports/:jobId/status', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.getReportJobStatus);
-router.get('/:hackathonId/reports/:jobId/download', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.downloadReport);
+router.post('/:hackathonId/reports', validate(hackathonParamSchema, 'params'), authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), validate(reportJobSchema), analyticsController.createReportJob);
+router.get('/:hackathonId/reports/:jobId/status', validate(reportJobParamSchema, 'params'), authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.getReportJobStatus);
+router.get('/:hackathonId/reports/:jobId/download', validate(reportJobParamSchema, 'params'), authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.downloadReport);
 
-router.get('/:hackathonId/snapshots', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.listSnapshots);
-router.get('/:hackathonId/snapshots/:snapshotId', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.getSnapshot);
-router.post('/:hackathonId/snapshots', authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), validate(snapshotSchema), analyticsController.createSnapshot);
+router.get('/:hackathonId/snapshots', validate(hackathonParamSchema, 'params'), authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.listSnapshots);
+router.get('/:hackathonId/snapshots/:snapshotId', validate(snapshotParamSchema, 'params'), authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), analyticsController.getSnapshot);
+router.post('/:hackathonId/snapshots', validate(hackathonParamSchema, 'params'), authorizeEventStaff('CO_ORGANIZER', 'FINANCE', 'COMMUNICATIONS'), validate(snapshotSchema), analyticsController.createSnapshot);
 
 module.exports = router;

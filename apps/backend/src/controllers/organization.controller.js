@@ -52,3 +52,13 @@ exports.updateMe = catchAsync(async (req, res) => {
     data: { organization: updatedOrganization },
   });
 });
+
+exports.uploadLogo = catchAsync(async (req, res) => {
+  const organization = await organizationService.uploadLogo(req.user.id, req.file, req);
+
+  res.status(200).json({
+    success: true,
+    message: 'Organization logo uploaded successfully.',
+    data: { organization, logoUrl: organization.logoUrl },
+  });
+});

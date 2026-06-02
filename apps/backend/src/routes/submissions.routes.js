@@ -5,18 +5,18 @@
 const { Router } = require('express');
 const Joi = require('joi');
 const multer = require('multer');
-const path = require('path');
 const submissionsController = require('../controllers/submissions.controller');
 const authenticate = require('../middleware/auth');
 const ensureVerified = require('../middleware/ensureVerified');
 const ensureProfileComplete = require('../middleware/ensureProfileComplete');
 const validate = require('../middleware/validate');
 const AppError = require('../utils/AppError');
+const { tmpUploadsRoot } = require('../utils/paths');
 
 const router = Router();
 
 const upload = multer({
-  dest: path.join(__dirname, '../../../uploads'),
+  dest: tmpUploadsRoot,
   limits: { fileSize: 50 * 1024 * 1024 },
 });
 

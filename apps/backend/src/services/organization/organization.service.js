@@ -6,6 +6,10 @@ const prisma = require('../../config/database');
 const AppError = require('../../utils/AppError');
 const eventBus = require('../../utils/eventBus');
 const { normalizePagination, buildPagination } = require('../../utils/pagination');
+const storageService = require('../storage/storage.service');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 class OrganizationService {
   async listPublic(query = {}) {
@@ -140,6 +144,69 @@ class OrganizationService {
     });
 
     return updatedOrganization;
+  }
+
+  async uploadLogo(userId, file, req) {
+    if (!file) throw new AppError('Logo file is required.', 400);
+
+    const membership = await prisma.organizationMember.findFirst({
+      where: { userId, role: 'ADMIN' },
+      include: { organization: true },
+    });
+    if (!membership || !membership.organization) {
+      throw new AppError('You must be an organization ADMIN to upload a logo.', 403);
+    }
+
+    const extension = path.extname(file.originalname || '').toLowerCase() || '.png';
+    const filename = `logo-${Date.now()}${extension}`;
+    const storageKey = `/organizations/${membership.organizationId}/${filename}`;
+    const checksum = crypto.createHash('sha256').update(fs.readFileSync(file.path)).digest('hex');
+    await this._scanFileOrThrow(file.path);
+    await storageService.moveToBlobStorage(file.path, storageKey);
+
+    const logoUrl = `${req.protocol}://${req.get('host')}/api/v1/storage/organizations/${membership.organizationId}/${filename}`;
+    const [organization] = await prisma.$transaction([
+      prisma.organization.update({
+        where: { id: membership.organizationId },
+        data: { logoUrl },
+      }),
+      prisma.storedFile.create({
+        data: {
+          storageKey,
+          folder: 'organizations',
+          entityId: membership.organizationId,
+          filename,
+          ownerId: userId,
+          mimeType: file.mimetype,
+          fileSize: file.size,
+          checksum,
+          accessLevel: 'PUBLIC',
+        },
+      }),
+    ]);
+
+    eventBus.emit('audit:log', {
+      actorId: userId,
+      action: 'ORGANIZATION_LOGO_UPDATED',
+      entity: 'organization',
+      entityId: membership.organizationId,
+      details: { storageKey },
+    });
+
+    return organization;
+  }
+
+  async _scanFileOrThrow(filePath) {
+    const scanner = process.env.VIRUS_SCANNER_COMMAND;
+    if (!scanner) return;
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    try {
+      await execFileAsync(scanner, [filePath], { timeout: 30000 });
+    } catch (err) {
+      throw new AppError('File failed security scanning.', 422);
+    }
   }
 
   _publicSelect() {

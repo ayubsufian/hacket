@@ -34,6 +34,14 @@ const cancelSchema = Joi.object({
   reason: Joi.string().trim().max(1000).allow(null, ''),
 });
 
+const eventParamSchema = Joi.object({
+  eventId: Joi.string().uuid().required(),
+});
+
+const broadcastParamSchema = Joi.object({
+  broadcastId: Joi.string().uuid().required(),
+});
+
 router.use(authenticate);
 
 router.get('/', notificationsController.getNotifications);
@@ -45,12 +53,14 @@ router.patch('/:id/read', notificationsController.markAsRead);
 // Sponsor/Communications triggers broadcast announcements
 router.get(
   '/broadcasts/:eventId',
+  validate(eventParamSchema, 'params'),
   authorizeEventStaff('CO_ORGANIZER', 'COMMUNICATIONS'),
   notificationsController.listBroadcasts
 );
 
 router.post(
   '/broadcast/:eventId',
+  validate(eventParamSchema, 'params'),
   authorizeEventStaff('CO_ORGANIZER', 'COMMUNICATIONS'),
   validate(broadcastSchema),
   notificationsController.createBroadcast
@@ -58,6 +68,7 @@ router.post(
 
 router.post(
   '/broadcasts/:eventId',
+  validate(eventParamSchema, 'params'),
   authorizeEventStaff('CO_ORGANIZER', 'COMMUNICATIONS'),
   validate(broadcastSchema),
   notificationsController.createBroadcast
@@ -65,6 +76,7 @@ router.post(
 
 router.delete(
   '/broadcasts/:broadcastId',
+  validate(broadcastParamSchema, 'params'),
   validate(cancelSchema),
   notificationsController.cancelBroadcast
 );

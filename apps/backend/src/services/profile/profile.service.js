@@ -206,6 +206,7 @@ class ProfileService {
     const extension = path.extname(file.originalname || '').toLowerCase() || '.png';
     const filename = `avatar-${Date.now()}${extension}`;
     const storageKey = `/profiles/${userId}/${filename}`;
+    await this._scanFileOrThrow(file.path);
     await storageService.moveToBlobStorage(file.path, storageKey);
 
     const avatarUrl = `${req.protocol}://${req.get('host')}/api/v1/storage/profiles/${userId}/${filename}`;
@@ -330,6 +331,19 @@ class ProfileService {
       await redisClient.del(`user:profile:public:${userId}`);
     } catch (err) {
       console.warn('[Profile] Redis cache del error:', err.message);
+    }
+  }
+
+  async _scanFileOrThrow(filePath) {
+    const scanner = process.env.VIRUS_SCANNER_COMMAND;
+    if (!scanner) return;
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    try {
+      await execFileAsync(scanner, [filePath], { timeout: 30000 });
+    } catch (err) {
+      throw new AppError('File failed security scanning.', 422);
     }
   }
 }

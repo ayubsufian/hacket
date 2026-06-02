@@ -6,6 +6,7 @@ const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
 const prisma = require('../config/database');
 const eventBus = require('../utils/eventBus');
+const { signDownloadToken, verifyDownloadToken } = require('../utils/signedUrl');
 
 const FOLDER_RULES = {
   profiles: {
@@ -27,6 +28,11 @@ const FOLDER_RULES = {
     maxSize: 20 * 1024 * 1024,
     mimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
     accessLevel: 'PRIVATE',
+  },
+  organizations: {
+    maxSize: 5 * 1024 * 1024,
+    mimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+    accessLevel: 'PUBLIC',
   },
 };
 
@@ -129,6 +135,36 @@ exports.deleteBlob = catchAsync(async (req, res) => {
   });
 });
 
+exports.createSignedUrl = catchAsync(async (req, res) => {
+  const { folder, entityId, filename } = req.params;
+  if (!validatePathSegment(folder) || !validatePathSegment(entityId) || !validatePathSegment(filename)) {
+    throw new AppError('Invalid file path.', 400);
+  }
+
+  const storageKey = `/${folder}/${entityId}/${filename}`;
+  const storedFile = await prisma.storedFile.findUnique({ where: { storageKey } });
+  if (!storedFile || storedFile.isDeleted) throw new AppError('Stored file not found.', 404);
+
+  if (storedFile.accessLevel === 'PRIVATE') {
+    await authorizeFolderRead(req.user, folder, entityId);
+  }
+
+  const token = signDownloadToken({
+    purpose: 'storage-download',
+    storageKey,
+    fileId: storedFile.id,
+  }, 10 * 60);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      url: `/api/v1/storage/${folder}/${entityId}/${filename}?token=${encodeURIComponent(token)}`,
+      token,
+      expiresInSeconds: 10 * 60,
+    },
+  });
+});
+
 /**
  * Serves a public blob.
  */
@@ -146,7 +182,10 @@ exports.getPublicBlob = catchAsync(async (req, res, next) => {
     return next(new AppError('File not found', 404));
   }
   if (storedFile?.accessLevel === 'PRIVATE') {
-    return next(new AppError('Authentication is required for this file.', 401));
+    const tokenOk = verifyStorageToken(req.query.token, storageKey, storedFile.id);
+    if (!tokenOk) {
+      return next(new AppError('A valid signed URL token is required for this file.', 403));
+    }
   }
   const absolutePath = storageService.getAbsolutePath(storageKey);
 
@@ -228,6 +267,7 @@ async function authorizeFolderWrite(user, folder, entityId) {
   if (folder === 'submissions') return authorizeSubmissionBlob(user, entityId);
   if (folder === 'events') return authorizeHackathonMedia(user, entityId);
   if (folder === 'awards') return authorizeHackathonMedia(user, entityId);
+  if (folder === 'organizations') return authorizeOrganizationMedia(user, entityId);
   throw new AppError('You do not have upload access for this folder.', 403);
 }
 
@@ -236,12 +276,24 @@ async function authorizeFolderDelete(user, folder, entityId) {
   if (folder === 'profiles' && entityId === user.id) return;
   if (folder === 'submissions') return authorizeSubmissionBlob(user, entityId);
   if (folder === 'events' || folder === 'awards') return authorizeHackathonMedia(user, entityId);
+  if (folder === 'organizations') return authorizeOrganizationMedia(user, entityId);
   throw new AppError('You do not have deletion access for this folder.', 403);
 }
 
 async function authorizeFolderRead(user, folder, entityId) {
   if (folder === 'submissions') return authorizeSubmissionBlob(user, entityId);
   if (folder === 'awards') return authorizeHackathonMedia(user, entityId);
+}
+
+async function authorizeOrganizationMedia(user, organizationId) {
+  const membership = await prisma.organizationMember.findFirst({
+    where: {
+      organizationId,
+      userId: user.id,
+      role: 'ADMIN',
+    },
+  });
+  if (!membership) throw new AppError('You do not have storage access for this organization.', 403);
 }
 
 async function authorizeHackathonMedia(user, hackathonId) {
@@ -280,5 +332,19 @@ async function scanFileOrThrow(filePath) {
     await execFileAsync(scanner, [filePath], { timeout: 30000 });
   } catch (err) {
     throw new AppError('File failed security scanning.', 422);
+  }
+}
+
+function verifyStorageToken(token, storageKey, fileId) {
+  if (!token) return false;
+  try {
+    const decoded = verifyDownloadToken(token, {
+      purpose: 'storage-download',
+      storageKey,
+      fileId,
+    });
+    return Boolean(decoded);
+  } catch (err) {
+    return false;
   }
 }

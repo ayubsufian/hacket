@@ -11,8 +11,9 @@ const notificationService = require('../services/notifications/notification.serv
 const eventBus = require('../utils/eventBus');
 const { signDownloadToken, verifyDownloadToken } = require('../utils/signedUrl');
 const { normalizePagination, buildPagination } = require('../utils/pagination');
+const { uploadsRoot } = require('../utils/paths');
 
-const UPLOADS_DIR = path.join(__dirname, '../../../uploads');
+const UPLOADS_DIR = uploadsRoot;
 
 async function authorizeCertificateAccess(user, certificate) {
   if (user.role === 'ADMIN' || certificate.userId === user.id) return true;

@@ -27,20 +27,28 @@ const revokeSchema = Joi.object({
   reason: Joi.string().trim().max(1000).allow(null, ''),
 });
 
+const idParamSchema = Joi.object({
+  id: Joi.string().uuid().required(),
+});
+
+const hackathonParamSchema = Joi.object({
+  hackathonId: Joi.string().uuid().required(),
+});
+
 // Main Flow: Participant views their own certificates
 router.get('/my-achievements', authorize('PARTICIPANT'), certificatesController.getMyCertificates);
 
-router.get('/hackathons/:hackathonId/certificates', authorizeEventStaff('CO_ORGANIZER', 'FINANCE'), certificatesController.listHackathonCertificates);
+router.get('/hackathons/:hackathonId/certificates', validate(hackathonParamSchema, 'params'), authorizeEventStaff('CO_ORGANIZER', 'FINANCE'), certificatesController.listHackathonCertificates);
 
-router.get('/:id', certificatesController.getById);
-router.get('/:id/download', certificatesController.download);
+router.get('/:id', validate(idParamSchema, 'params'), certificatesController.getById);
+router.get('/:id/download', validate(idParamSchema, 'params'), certificatesController.download);
 
 // AF1: Participant reports a broken certificate link
-router.post('/:id/report-broken-link', authorize('PARTICIPANT'), certificatesController.reportBrokenLink);
+router.post('/:id/report-broken-link', authorize('PARTICIPANT'), validate(idParamSchema, 'params'), certificatesController.reportBrokenLink);
 
 // AF2: Administrator bulk issues certificates
 router.post('/bulk-issue', authorize('ORGANIZER', 'ADMIN'), validate(bulkIssueSchema), certificatesController.bulkIssue);
-router.patch('/:id/revoke', authorize('ADMIN'), validate(revokeSchema), certificatesController.revoke);
-router.post('/:id/regenerate', authorize('ORGANIZER', 'ADMIN'), certificatesController.regenerate);
+router.patch('/:id/revoke', authorize('ADMIN'), validate(idParamSchema, 'params'), validate(revokeSchema), certificatesController.revoke);
+router.post('/:id/regenerate', authorize('ORGANIZER', 'ADMIN'), validate(idParamSchema, 'params'), certificatesController.regenerate);
 
 module.exports = router;

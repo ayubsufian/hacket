@@ -12,8 +12,9 @@ const { createObjectCsvStringifier } = require('csv-writer');
 const AppError = require('../../utils/AppError');
 const { redisClient } = require('../../config/redis');
 const { normalizePagination, buildPagination } = require('../../utils/pagination');
+const { uploadsRoot } = require('../../utils/paths');
 
-const UPLOADS_DIR = path.join(__dirname, '../../../../uploads');
+const UPLOADS_DIR = uploadsRoot;
 const REPORT_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 class AnalyticsService {

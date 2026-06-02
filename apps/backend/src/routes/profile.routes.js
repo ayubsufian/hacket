@@ -11,10 +11,11 @@ const multer = require('multer');
 const profileController = require('../controllers/profile.controller');
 const authenticate = require('../middleware/auth');
 const validate = require('../middleware/validate');
+const { tmpUploadsRoot } = require('../utils/paths');
 
 const router = Router();
 const upload = multer({
-  dest: 'uploads/tmp',
+  dest: tmpUploadsRoot,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype)) {

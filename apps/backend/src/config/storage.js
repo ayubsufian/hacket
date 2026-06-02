@@ -6,6 +6,7 @@
 const multer = require('multer');
 const path = require('path');
 const AppError = require('../utils/AppError');
+const { tmpUploadsRoot } = require('../utils/paths');
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB for demo videos
 
@@ -25,7 +26,7 @@ const ALLOWED_MIME_TYPES = [
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const fs = require('fs');
-    const dir = path.join(__dirname, '../../uploads/tmp');
+    const dir = tmpUploadsRoot;
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
