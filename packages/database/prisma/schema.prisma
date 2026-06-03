@@ -22,6 +22,11 @@ datasource db {
 // ENUMS
 // =============================================================================
 
+enum CalendarType {
+  GREGORIAN
+  ETHIOPIAN
+}
+
 enum AuthProvider {
   LOCAL
   GOOGLE
@@ -408,6 +413,7 @@ model UserProfile {
   githubUrl                  String?   @map("github_url")
   linkedinUrl                String?   @map("linkedin_url")
   preferredLocale            String    @default("en") @map("preferred_locale") @db.VarChar(5)
+  preferredCalendar          CalendarType @default(GREGORIAN) @map("preferred_calendar")
   city                       String?
   region                     String?
   representativeName         String?   @map("representative_name") @db.VarChar(255) // FR-USR-02: organizer representative

@@ -149,6 +149,7 @@ const eventUpdateSchema = updateSchema.custom(validateEventShape);
 router.get('/', eventsController.list);
 router.get('/:id', eventsController.getById);
 router.get('/:id/calendar', eventsController.getCalendar);
+router.get('/:id/schedule', eventsController.getSchedule);
 
 // Sponsor, Organizer, & Logistics Data Access
 router.get(

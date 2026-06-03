@@ -10,6 +10,7 @@ const { levenshteinDistance } = require('../../utils/levenshtein');
 const { categorizeDescription } = require('../../utils/categorizer');
 const { redisClient } = require('../../config/redis');
 const scoringService = require('../judging/scoring.service');
+const { toEthiopianFromDate, formatEAT, formatEATTime } = require('../../utils/ethiopianDate');
 
 class EventsService {
   /**
@@ -1881,6 +1882,87 @@ class EventsService {
 
     const suffix = Date.now().toString(36);
     return `${base}-${suffix}`;
+  }
+
+  // ─── Calendar Schedule ───────────────────────────────────────────────
+
+  /**
+   * Get the full lifecycle schedule for a hackathon in dual calendar format.
+   * Returns each deadline in both Gregorian (ISO 8601 / EAT) and Ethiopian Calendar.
+   * This allows the frontend to toggle between calendar formats without additional API calls.
+   *
+   * @param {string} hackathonId
+   * @returns {object} schedule payload
+   */
+  async getSchedule(hackathonId) {
+    const hackathon = await prisma.hackathon.findUnique({
+      where: { id: hackathonId },
+      select: {
+        id: true,
+        title: true,
+        titleAm: true,
+        registrationStart: true,
+        registrationEnd: true,
+        eventStart: true,
+        eventEnd: true,
+        submissionDeadline: true,
+        feedbackDeadline: true,
+        scoreboardReleaseAt: true,
+        feedbackReleaseAt: true,
+        status: true,
+      },
+    });
+
+    if (!hackathon) {
+      throw new AppError('Hackathon not found.', 404);
+    }
+
+    const buildDeadline = (label, labelAm, date, phase) => {
+      if (!date) return null;
+      const ethAm = toEthiopianFromDate(date, 'am');
+      const ethEn = toEthiopianFromDate(date, 'en');
+      return {
+        phase,
+        label,
+        labelAm,
+        gregorian: {
+          iso: new Date(date).toISOString(),
+          eat: formatEAT(date),
+          eatTime: formatEATTime(date),
+        },
+        ethiopian: {
+          formatted: ethEn.formatted,
+          formattedAm: ethAm.formatted,
+          year: ethAm.ethiopian.year,
+          month: ethAm.ethiopian.month,
+          day: ethAm.ethiopian.day,
+        },
+      };
+    };
+
+    const deadlines = [
+      buildDeadline('Registration Opens', 'ምዝገባ ይጀምራል', hackathon.registrationStart, 'REGISTRATION_START'),
+      buildDeadline('Registration Closes', 'ምዝገባ ይዘጋል', hackathon.registrationEnd, 'REGISTRATION_END'),
+      buildDeadline('Event Starts', 'ክስተቱ ይጀምራል', hackathon.eventStart, 'EVENT_START'),
+      buildDeadline('Event Ends', 'ክስተቱ ያልቃል', hackathon.eventEnd, 'EVENT_END'),
+      buildDeadline('Submission Deadline', 'የማስረከቢያ ግዜ', hackathon.submissionDeadline, 'SUBMISSION_DEADLINE'),
+      buildDeadline('Judging Deadline', 'የዳኝነት ግዜ', hackathon.feedbackDeadline, 'JUDGING_DEADLINE'),
+      buildDeadline('Feedback Release', 'አስተያየት ይለቀቃል', hackathon.feedbackReleaseAt, 'FEEDBACK_RELEASE'),
+      buildDeadline('Results Release', 'ውጤት ይለቀቃል', hackathon.scoreboardReleaseAt, 'RESULTS_RELEASE'),
+    ].filter(Boolean);
+
+    // Sort chronologically
+    deadlines.sort((a, b) => new Date(a.gregorian.iso) - new Date(b.gregorian.iso));
+
+    return {
+      hackathonId: hackathon.id,
+      title: hackathon.title,
+      titleAm: hackathon.titleAm,
+      status: hackathon.status,
+      timezone: 'Africa/Addis_Ababa',
+      utcOffset: '+03:00',
+      deadlines,
+    };
   }
 }
 

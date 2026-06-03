@@ -7,6 +7,7 @@ const archivingService = require('../services/archiving/archiving.service');
 const catchAsync = require('../utils/catchAsync');
 const { generateIcs } = require('../utils/calendar');
 const AppError = require('../utils/AppError');
+const prisma = require('../config/database');
 
 exports.getCalendar = catchAsync(async (req, res) => {
   const hackathon = await eventsService.getById(req.params.id);
@@ -19,7 +20,22 @@ exports.getCalendar = catchAsync(async (req, res) => {
     throw new AppError('Calendar export is only available after the event schedule is configured.', 409);
   }
 
-  const icsContent = generateIcs(hackathon);
+  // 2026 Standard: Respect user's preferred calendar type for Ethiopian date annotation
+  let calendarType = 'GREGORIAN';
+  if (req.user) {
+    const profile = await prisma.userProfile.findUnique({
+      where: { userId: req.user.id },
+      select: { preferredCalendar: true },
+    });
+    calendarType = profile?.preferredCalendar || 'GREGORIAN';
+  }
+
+  // Allow explicit override via query parameter
+  if (req.query.calendar === 'ETHIOPIAN' || req.query.calendar === 'GREGORIAN') {
+    calendarType = req.query.calendar;
+  }
+
+  const icsContent = generateIcs(hackathon, calendarType);
 
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
   res.setHeader(
@@ -28,6 +44,15 @@ exports.getCalendar = catchAsync(async (req, res) => {
   );
 
   res.status(200).send(icsContent);
+});
+
+exports.getSchedule = catchAsync(async (req, res) => {
+  const schedule = await eventsService.getSchedule(req.params.id);
+
+  res.status(200).json({
+    success: true,
+    data: { schedule },
+  });
 });
 
 exports.create = catchAsync(async (req, res) => {

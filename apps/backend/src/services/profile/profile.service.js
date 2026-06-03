@@ -56,6 +56,7 @@ class ProfileService {
             githubUrl: true,
             linkedinUrl: true,
             preferredLocale: true,
+            preferredCalendar: true,
             city: true,
             region: true,
             representativeName: true,
