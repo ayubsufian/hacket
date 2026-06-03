@@ -72,6 +72,7 @@ class AuthService {
               firstName,
               lastName,
               representativeName: representativeName || `${firstName} ${lastName}`.trim(),
+              preferredLocale: meta.locale || 'en',
             },
           },
         },

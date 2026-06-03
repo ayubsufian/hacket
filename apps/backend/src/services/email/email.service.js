@@ -5,6 +5,7 @@
 // =============================================================================
 
 const nodemailer = require('nodemailer');
+const localizationService = require('../localization/localization.service');
 
 class EmailService {
   constructor() {
@@ -27,11 +28,22 @@ class EmailService {
   /**
    * Send Email Verification OTP
    */
-  async sendVerificationEmail(to, otp, firstName = '', role = 'PARTICIPANT') {
+  async sendVerificationEmail(to, otp, firstName = '', role = 'PARTICIPANT', locale = 'en') {
     const isOrganizer = role === 'ORGANIZER';
-    const welcomeMessage = isOrganizer
+    let welcomeMessage = isOrganizer
       ? 'Welcome to HackET! Please confirm your email address so we can continue reviewing your organizer account and organization details.'
       : 'Welcome to HackET! Please confirm your email address to activate your account and start participating in hackathons.';
+
+    let subject = 'Welcome to HackET - Please verify your email';
+    try {
+       const dict = await localizationService.getDictionary(locale);
+       if (dict['email.subject.verification']) {
+          subject = dict['email.subject.verification'];
+       }
+       if (locale === 'am') {
+           welcomeMessage = isOrganizer ? 'እንኳን ወደ ሃክኢት በደህና መጡ! የአዘጋጅነት ጥያቄዎን ማየት እንድንቀጥል እባክዎ ኢሜልዎን ያረጋግጡ።' : 'እንኳን ወደ ሃክኢት በደህና መጡ! መለያዎን ለማንቃት እና በክስተቶች ላይ ለመሳተፍ እባክዎ ኢሜልዎን ያረጋግጡ።';
+       }
+    } catch (err) {}
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
@@ -58,7 +70,7 @@ class EmailService {
         const info = await this.transporter.sendMail({
           from: this.fromAddress,
           to,
-          subject: 'Welcome to HackET - Please verify your email',
+          subject,
           html,
         });
         console.log(`[EmailService] Verification email sent to ${to}. MessageId: ${info.messageId}`);
@@ -74,7 +86,19 @@ class EmailService {
   /**
    * Send Password Reset OTP
    */
-  async sendPasswordResetEmail(to, otp, firstName = '') {
+  async sendPasswordResetEmail(to, otp, firstName = '', locale = 'en') {
+    let subject = 'HackET - Password Reset';
+    let bodyText = 'We received a request to reset the password for your HackET account. Enter this code in HackET to choose a new password.';
+    try {
+       const dict = await localizationService.getDictionary(locale);
+       if (dict['email.subject.password_reset']) {
+          subject = dict['email.subject.password_reset'];
+       }
+       if (locale === 'am') {
+           bodyText = 'የሃክኢት የይለፍ ቃልዎን ለመቀየር ጥያቄ ደርሶናል። አዲስ የይለፍ ቃል ለመምረጥ ይህንን ኮድ ያስገቡ።';
+       }
+    } catch (err) {}
+    
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
         <div style="background-color: #0f172a; padding: 24px; text-align: center;">
@@ -83,7 +107,7 @@ class EmailService {
         <div style="padding: 32px; background-color: #ffffff; color: #334155;">
           <h2 style="margin-top: 0; color: #0f172a;">Password Reset Request</h2>
           <p>Hi ${firstName || 'Developer'},</p>
-          <p>We received a request to reset the password for your HackET account. Enter this code in HackET to choose a new password.</p>
+          <p>${bodyText}</p>
           <div style="text-align: center; margin: 32px 0;">
             <div style="display: inline-block; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 28px; color: #0f172a; font-size: 32px; font-weight: 700; letter-spacing: 8px;">${otp}</div>
           </div>
@@ -100,7 +124,7 @@ class EmailService {
         const info = await this.transporter.sendMail({
           from: this.fromAddress,
           to,
-          subject: 'HackET - Password Reset',
+          subject,
           html,
         });
         console.log(`[EmailService] Password reset email sent to ${to}. MessageId: ${info.messageId}`);
@@ -276,7 +300,19 @@ class EmailService {
   /**
    * Send Account Verified Email
    */
-  async sendAccountVerifiedEmail(to) {
+  async sendAccountVerifiedEmail(to, locale = 'en') {
+    let subject = 'HackET - Your account has been verified';
+    let bodyText = 'Great news! Your email address has been successfully verified.<br/>You can now fully participate in hackathons on the HackET platform.';
+    try {
+       const dict = await localizationService.getDictionary(locale);
+       if (dict['email.subject.account_verified']) {
+          subject = dict['email.subject.account_verified'];
+       }
+       if (locale === 'am') {
+           bodyText = 'መልካም ዜና! የኢሜል አድራሻዎ በተሳካ ሁኔታ ተረጋግጧል።<br/>አሁን በሃክኢት መድረክ ላይ በሚደረጉ ክስተቶች ሙሉ ለሙሉ መሳተፍ ይችላሉ።';
+       }
+    } catch (err) {}
+    
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
         <div style="background-color: #0f172a; padding: 24px; text-align: center;">
@@ -285,8 +321,7 @@ class EmailService {
         <div style="padding: 32px; background-color: #ffffff; color: #334155;">
           <h2 style="margin-top: 0; color: #0f172a;">Account Verified Successfully</h2>
           <p>Hi there,</p>
-          <p>Great news! Your email address has been successfully verified.</p>
-          <p>You can now fully participate in hackathons on the HackET platform.</p>
+          <p>${bodyText}</p>
         </div>
       </div>
     `;
@@ -296,7 +331,7 @@ class EmailService {
         const info = await this.transporter.sendMail({
           from: this.fromAddress,
           to,
-          subject: 'HackET - Your account has been verified',
+          subject,
           html,
         });
         console.log(`[EmailService] Account verified email sent to ${to}. MessageId: ${info.messageId}`);
@@ -401,12 +436,12 @@ const emailService = new EmailService();
 // Register background event listeners
 const eventBus = require('../../utils/eventBus');
 
-eventBus.on('email:verification_requested', async ({ email, otp, firstName, role }) => {
-  await emailService.sendVerificationEmail(email, otp, firstName, role);
+eventBus.on('email:verification_requested', async ({ email, otp, firstName, role, locale }) => {
+  await emailService.sendVerificationEmail(email, otp, firstName, role, locale);
 });
 
-eventBus.on('email:password_reset_requested', async ({ email, otp, firstName }) => {
-  await emailService.sendPasswordResetEmail(email, otp, firstName);
+eventBus.on('email:password_reset_requested', async ({ email, otp, firstName, locale }) => {
+  await emailService.sendPasswordResetEmail(email, otp, firstName, locale);
 });
 
 eventBus.on('email:staff_invitation', async ({ email, token, hackathonTitle, staffRole }) => {
@@ -437,8 +472,8 @@ eventBus.on('email:admin_provisioned', async ({ email, firstName, provisionedBy 
   await emailService.sendAdminProvisionedEmail(email, firstName, provisionedBy);
 });
 
-eventBus.on('email:account_verified', async ({ email }) => {
-  await emailService.sendAccountVerifiedEmail(email);
+eventBus.on('email:account_verified', async ({ email, locale }) => {
+  await emailService.sendAccountVerifiedEmail(email, locale);
 });
 
 module.exports = emailService;

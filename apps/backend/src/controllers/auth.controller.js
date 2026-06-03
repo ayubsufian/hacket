@@ -25,6 +25,7 @@ exports.register = catchAsync(async (req, res) => {
     {
       userAgent: req.headers['user-agent'],
       ip: req.ip,
+      locale: req.headers['accept-language']?.toLowerCase().startsWith('am') ? 'am' : 'en',
     },
   );
 
@@ -93,6 +94,7 @@ exports.googleOAuth = catchAsync(async (req, res) => {
     {
       userAgent: req.headers['user-agent'],
       ip: req.ip,
+      locale: req.headers['accept-language']?.toLowerCase().startsWith('am') ? 'am' : 'en',
     },
   );
 
@@ -127,6 +129,7 @@ exports.googleOrganizerOAuth = catchAsync(async (req, res) => {
     {
       userAgent: req.headers['user-agent'],
       ip: req.ip,
+      locale: req.headers['accept-language']?.toLowerCase().startsWith('am') ? 'am' : 'en',
     },
   );
   const { statusCode = 200, ...responseData } = result;
@@ -150,6 +153,7 @@ exports.githubOAuth = catchAsync(async (req, res) => {
     {
       userAgent: req.headers['user-agent'],
       ip: req.ip,
+      locale: req.headers['accept-language']?.toLowerCase().startsWith('am') ? 'am' : 'en',
     },
   );
 

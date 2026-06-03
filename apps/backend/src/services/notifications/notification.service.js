@@ -7,6 +7,7 @@ const prisma = require('../../config/database');
 const eventBus = require('../../utils/eventBus');
 const AppError = require('../../utils/AppError');
 const { normalizePagination, buildPagination } = require('../../utils/pagination');
+const localizationService = require('../localization/localization.service');
 
 class NotificationService {
   constructor() {
@@ -263,7 +264,8 @@ class NotificationService {
             user: { 
               select: { 
                 email: true,
-                notificationPreference: true // Fetch preferences!
+                notificationPreference: true,
+                profile: { select: { preferredLocale: true } }
               } 
             } 
           },
@@ -274,7 +276,8 @@ class NotificationService {
         for (const m of members) {
           uniqueUsers.set(m.userId, {
             email: m.user.email,
-            wantsEmail: m.user.notificationPreference ? m.user.notificationPreference.email : true // Default to true if no preference record exists
+            wantsEmail: m.user.notificationPreference ? m.user.notificationPreference.email : true,
+            locale: m.user.profile?.preferredLocale || 'en'
           });
         }
 
@@ -287,16 +290,29 @@ class NotificationService {
           return;
         }
 
+        const dictEn = await localizationService.getDictionary('en');
+        const dictAm = await localizationService.getDictionary('am');
+        const dicts = { en: dictEn, am: dictAm };
+
         // 2026 Standard 1: Bulk Database Insert (In-App notifications always trigger)
-        const notificationPayloads = usersArray.map(([userId]) => ({
-          userId,
-          type: broadcast.type,
-          title: broadcast.title,
-          message: broadcast.message,
-          metadata: { broadcastId, hackathonId },
-          broadcastId,
-          isRead: false
-        }));
+        const notificationPayloads = usersArray.map(([userId, data]) => {
+          const dict = dicts[data.locale] || dicts.en;
+          let localizedTitle = broadcast.title;
+          
+          if (broadcast.type === 'SCORE_PUBLISHED') {
+             localizedTitle = dict['notification.title.score_published'] || broadcast.title;
+          }
+          
+          return {
+            userId,
+            type: broadcast.type,
+            title: localizedTitle,
+            message: broadcast.message,
+            metadata: { broadcastId, hackathonId },
+            broadcastId,
+            isRead: false
+          };
+        });
 
         await prisma.notification.createMany({
           data: notificationPayloads,
@@ -310,10 +326,15 @@ class NotificationService {
         for (let i = 0; i < emailRecipients.length; i += CHUNK_SIZE) {
           const chunk = emailRecipients.slice(i, i + CHUNK_SIZE);
           
-          const emailPromises = chunk.map(([userId, data]) => 
-            this._sendRealTimeEmail(userId, data.email, broadcast.title, broadcast.message)
-              .catch(err => console.error(`[Broadcast] Failed to email ${data.email}:`, err.message))
-          );
+          const emailPromises = chunk.map(([userId, data]) => {
+            let localizedTitle = broadcast.title;
+            if (broadcast.type === 'SCORE_PUBLISHED') {
+               const dict = dicts[data.locale] || dicts.en;
+               localizedTitle = dict['notification.title.score_published'] || broadcast.title;
+            }
+            return this._sendRealTimeEmail(userId, data.email, localizedTitle, broadcast.message)
+              .catch(err => console.error(`[Broadcast] Failed to email ${data.email}:`, err.message));
+          });
           
           await Promise.allSettled(emailPromises);
         }
@@ -338,16 +359,16 @@ class NotificationService {
       try {
         const members = await prisma.teamMember.findMany({
           where: { team: { hackathonId } },
-          select: { userId: true, user: { select: { email: true } } },
+          select: { userId: true, user: { select: { email: true, profile: { select: { preferredLocale: true } } } } },
         });
 
         const uniqueUsers = new Map();
-        for (const m of members) uniqueUsers.set(m.userId, m.user.email);
+        for (const m of members) uniqueUsers.set(m.userId, { email: m.user.email, locale: m.user.profile?.preferredLocale || 'en' });
 
-        const title = `🚨 Action Required: 24 Hours Left!`;
-        const message = `The submission deadline for "${hackathonTitle}" is strictly closing in 24 hours.`;
-
-        for (const [userId, email] of uniqueUsers.entries()) {
+        for (const [userId, { email, locale }] of uniqueUsers.entries()) {
+          const dict = await localizationService.getDictionary(locale);
+          const title = dict['notification.title.deadline_warning'] || `🚨 Action Required: 24 Hours Left!`;
+          const message = `The submission deadline for "${hackathonTitle}" is strictly closing in 24 hours.`;
           // 1. Create In-App Notification (Always)
           await this.create({
             userId,

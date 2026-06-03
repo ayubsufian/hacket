@@ -43,6 +43,7 @@ const adminRoutes = require('./routes/admin.routes');
 const searchRoutes = require('./routes/search.routes');
 const { eventRouter: staffEventRoutes, globalRouter: staffGlobalRoutes } = require('./routes/staff.routes');
 const storageRoutes = require('./routes/storage.routes');
+const localizationRoutes = require('./routes/localization.routes');
 
 // ── Initialize Services (registers EventBus listeners) ──────────────────
 require('./services/audit/audit.service');
@@ -116,12 +117,12 @@ app.use(`${API_PREFIX}/search`, searchRoutes);
 app.use(`${API_PREFIX}/events/:eventId/staff`, staffEventRoutes);
 app.use(`${API_PREFIX}/staff`, staffGlobalRoutes);
 app.use(`${API_PREFIX}/storage`, storageRoutes);
+app.use(`${API_PREFIX}/localization`, localizationRoutes);
 
 // ── 404 Handler ─────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   next(new AppError(`Route ${req.method} ${req.originalUrl} not found.`, 404));
 });
-
 // ── Global Error Handler ────────────────────────────────────────────────
 app.use(errorHandler);
 
