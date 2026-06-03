@@ -52,7 +52,7 @@ exports.getById = catchAsync(async (req, res) => {
 exports.list = catchAsync(async (req, res) => {
   const { status, region, theme, category, schedule, search, page, limit } = req.query;
 
-  let statusArray = ['REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING'];
+  let statusArray = ['UPCOMING', 'REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING', 'COMPLETED'];
 
   if (status) {
     // Support both comma-separated strings and arrays
@@ -65,7 +65,7 @@ exports.list = catchAsync(async (req, res) => {
       
     // Fallback if they only requested DRAFT or provided an invalid array
     if (statusArray.length === 0) {
-      statusArray = ['REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING'];
+      statusArray = ['UPCOMING', 'REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING', 'COMPLETED'];
     }
   }
 

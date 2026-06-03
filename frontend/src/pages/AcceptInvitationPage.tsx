@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
-import { XCircle, Mail, ShieldCheck, UserPlus, CheckCircle, Loader2, LogIn } from 'lucide-react'
+import { XCircle, Mail, ShieldCheck, UserPlus, CheckCircle, Loader2, LogIn, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { acceptStaffInvitation } from '../api/events'
+import { useTheme } from '../contexts/ThemeContext'
 import type { StaffRole } from '../types/models'
 
 const ROLE_STYLES: Record<string, { bg: string; border: string; text: string }> = {
@@ -24,6 +25,7 @@ export default function AcceptInvitationPage() {
   const token = searchParams.get('token') ?? ''
   const navigate = useNavigate()
   const { user, isAuthenticated } = useAuth()
+  const { resolvedTheme, toggleTheme } = useTheme()
 
   const [status, setStatus] = useState<'idle' | 'accepting' | 'accepted' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
@@ -57,19 +59,26 @@ export default function AcceptInvitationPage() {
   const roleStyle = acceptedRole ? (ROLE_STYLES[acceptedRole] ?? ROLE_STYLES.JUDGE) : ROLE_STYLES.JUDGE
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col">
       <header className="px-4 py-4 sm:px-6 lg:px-8">
-        <div className="max-w-md mx-auto">
-          <Link to="/" className="flex items-center gap-2 text-gray-900 hover:text-gray-700 w-fit">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-white font-bold text-sm">H</div>
-            <span className="font-semibold tracking-tight">HackET</span>
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <Link to="/" className="flex items-center text-gray-900 dark:text-white hover:text-gray-700 dark:hover:text-gray-300 w-fit">
+            <span className="text-lg font-bold tracking-tight">Hack<span className="text-emerald-500">ET</span></span>
           </Link>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="flex items-center justify-center rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500 hover:text-gray-700 dark:hover:text-gray-200 transition-all duration-200 shadow-sm"
+            aria-label="Toggle theme"
+          >
+            {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
         </div>
       </header>
 
       <main className="flex-1 flex items-center justify-center px-4 py-8 sm:px-6">
         <div className="w-full max-w-sm">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-8 text-center">
 
             {/* No token */}
             {!hasToken && (
@@ -147,8 +156,8 @@ export default function AcceptInvitationPage() {
                     <Mail size={28} className="text-violet-500" />
                   </div>
                 </div>
-                <h1 className="text-xl font-bold text-gray-900 mb-1">You're Invited!</h1>
-                <p className="text-sm text-gray-500 mb-6">Sign in or create an account to accept this staff invitation and join the hackathon team.</p>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-1">You're Invited!</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Sign in or create an account to accept this staff invitation and join the hackathon team.</p>
                 <div className="space-y-3">
                   <Link
                     to={loginUrl}
@@ -163,7 +172,7 @@ export default function AcceptInvitationPage() {
                     <UserPlus size={15} /> Create account & accept
                   </Link>
                 </div>
-                <p className="mt-5 text-xs text-gray-400 leading-relaxed">
+                <p className="mt-5 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
                   After signing in your role will be assigned automatically.
                 </p>
               </>
@@ -177,8 +186,8 @@ export default function AcceptInvitationPage() {
                     <ShieldCheck size={28} className="text-indigo-500" />
                   </div>
                 </div>
-                <h1 className="text-xl font-bold text-gray-900 mb-2">Accept Invitation</h1>
-                <p className="text-sm text-gray-500 mb-6">Signed in as <strong>{user?.email}</strong>. Click below to accept.</p>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Accept Invitation</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Signed in as <strong className="text-gray-700 dark:text-gray-300">{user?.email}</strong>. Click below to accept.</p>
                 <button onClick={handleAccept} className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-lg transition-colors text-sm">
                   <ShieldCheck size={15} /> Accept invitation
                 </button>

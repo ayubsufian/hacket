@@ -104,7 +104,7 @@ export default function Dashboard() {
                       <p className="font-medium text-gray-900 dark:text-gray-200 group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors">{rec.title}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{(rec.tags ?? []).slice(0, 3).join(', ')}</p>
                     </div>
-                    <span className="text-xs font-bold text-amber-500 bg-amber-50 px-2 py-1 rounded-full">{Math.round(rec.matchScore * 100)}% match</span>
+                    <span className="text-xs font-bold text-amber-500 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-full">{Math.round(rec.matchScore * 100)}% match</span>
                   </Link>
                 ))}
               </div>
@@ -122,7 +122,7 @@ export default function Dashboard() {
                   <Link key={ev.id} to={`/events/${ev.id}`} className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors group">
                     <div>
                       <p className="font-medium text-gray-900 dark:text-gray-200 group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors">{ev.title}</p>
-                      <p className="text-xs text-gray-500 mt-1">{ev.eventStart ? new Date(ev.eventStart).toLocaleDateString() : '—'}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{ev.eventStart ? new Date(ev.eventStart).toLocaleDateString() : '—'}</p>
                     </div>
                     <ChevronRight size={16} className="text-gray-300 group-hover:text-accent-500 group-hover:translate-x-1 transition-all" />
                   </Link>
@@ -132,18 +132,18 @@ export default function Dashboard() {
 
             <div className="card flex flex-col">
               <div className="flex items-center justify-between border-b border-border p-4">
-                <h2 className="font-semibold text-gray-900 flex items-center gap-2"><Trophy size={18} className="text-gray-400" /> Top Teams (Featured)</h2>
+                <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Trophy size={18} className="text-gray-400 dark:text-gray-500" /> Top Teams (Featured)</h2>
                 <Link to="/leaderboard" className="text-sm font-medium text-accent-600 hover:text-accent-700">Full rankings</Link>
               </div>
               <div className="flex-1 overflow-x-auto">
-                {leaderboard?.length === 0 ? <p className="p-8 text-center text-sm text-gray-500">No rankings available yet.</p> : (
+                {leaderboard?.length === 0 ? <p className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">No rankings available yet.</p> : (
                   <table className="tbl !border-t-0">
                     <thead><tr><th className="pl-4 w-12">#</th><th>Team</th><th className="text-right pr-4">Score</th></tr></thead>
                     <tbody>
                       {leaderboard?.map((e, i) => (
                         <tr key={i}>
-                          <td className="pl-4 font-bold text-gray-400">{i + 1}</td>
-                          <td className="font-medium text-gray-900">{e.teamName || `Team ${i + 1}`}</td>
+                          <td className="pl-4 font-bold text-gray-400 dark:text-gray-500">{i + 1}</td>
+                          <td className="font-medium text-gray-900 dark:text-gray-200">{e.teamName || `Team ${i + 1}`}</td>
                           <td className="text-right pr-4 font-bold text-accent-600">{e.finalScore?.toFixed(1) ?? '—'}</td>
                         </tr>
                       ))}

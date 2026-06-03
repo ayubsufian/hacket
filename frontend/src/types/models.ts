@@ -31,6 +31,7 @@ export interface User {
   email: string
   role: UserRole
   isActive?: boolean
+  verificationStatus?: 'PENDING' | 'UNDER_REVIEW' | 'VERIFIED' | 'REJECTED'
   createdAt?: string
   profile?: UserProfile | null
 }

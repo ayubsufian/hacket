@@ -17,12 +17,12 @@ const ALL_STAFF_ROLES: { value: StaffRole; label: string }[] = [
 ]
 
 const ROLE_BADGE: Record<StaffRole, string> = {
-    JUDGE:          'bg-indigo-50 text-indigo-700 border-indigo-200',
-    MENTOR:         'bg-emerald-50 text-emerald-700 border-emerald-200',
-    TECHNICAL_LEAD: 'bg-violet-50 text-violet-700 border-violet-200',
-    LOGISTICS:      'bg-orange-50 text-orange-700 border-orange-200',
-    COMMUNICATIONS: 'bg-sky-50 text-sky-700 border-sky-200',
-    FINANCE:        'bg-rose-50 text-rose-700 border-rose-200',
+    JUDGE:          'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+    MENTOR:         'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+    TECHNICAL_LEAD: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800',
+    LOGISTICS:      'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800',
+    COMMUNICATIONS: 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800',
+    FINANCE:        'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
 }
 
 export default function OrganizerDashboard() {
@@ -212,21 +212,39 @@ export default function OrganizerDashboard() {
         </div>
     )
 
+    const isVerified = user?.verificationStatus === 'VERIFIED' || user?.role === 'ADMIN'
+
     return (
         <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-            <div className="card-elevated flex flex-col gap-4 border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(244,247,251,0.94))] p-6 sm:flex-row sm:items-end sm:justify-between">
+            <div className="card-elevated flex flex-col gap-4 border border-white/70 dark:border-slate-700 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(244,247,251,0.94))] dark:bg-slate-800 p-6 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 dark:bg-orange-900/30 text-orange-600">
                         <Settings size={24} />
                     </div>
                     <div>
-                        <p className="section-title text-accent-600 mb-1">Organizer workspace</p>
-                        <h1 className="text-2xl font-bold text-navy-900">Event operations</h1>
-                        <p className="text-sm text-slate-500">Manage your existing hackathons and create new event drafts with backend-valid settings.</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 mb-1">Organizer workspace</p>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Event operations</h1>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Manage your existing hackathons and create new event drafts.</p>
                     </div>
                 </div>
-                {!showForm && <button onClick={() => setShowForm(true)} className="btn-primary"><PlusCircle size={16} /> Create Event</button>}
+                {!showForm && isVerified && <button onClick={() => setShowForm(true)} className="btn-primary"><PlusCircle size={16} /> Create Event</button>}
             </div>
+
+            {/* Verification Status Banner */}
+            {!isVerified && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-xl p-4 flex items-start gap-3">
+                    <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center shrink-0">
+                        <ShieldCheck size={20} />
+                    </div>
+                    <div>
+                        <p className="font-semibold text-amber-800 dark:text-amber-200">Verification Required</p>
+                        <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                            Your organizer account is <strong>{user?.verificationStatus?.replace('_', ' ') || 'PENDING'}</strong>. 
+                            You can view your events but cannot create new ones until an admin verifies your account.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {showForm && (
                 <div className="card-elevated p-6 sm:p-8 border border-orange-100 bg-gradient-to-br from-white to-orange-50/30 animate-slide-in-left">

@@ -1,14 +1,15 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   Bell, ChevronDown, ClipboardCheck, FileText, Globe,
   LayoutDashboard, LogOut, Menu, Settings, Trophy, Users, X, Calendar,
-  Moon, Sun,
+  Moon, Sun, User,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTranslation } from '../../contexts/LanguageContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { getDashboardRoute } from '../../utils/appState'
+import { getNotifications } from '../../api/notifications'
 
 const publicNav = [
   { to: '/', label: 'Home' },
@@ -23,6 +24,7 @@ const sidebarNav = [
   { to: '/submissions', label: 'Submissions', icon: FileText },
   { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   { to: '/notifications', label: 'Notifications', icon: Bell },
+  { to: '/profile', label: 'Profile', icon: User },
 ]
 
 const roleNav: Record<string, { to: string; label: string; icon: typeof Settings }[]> = {
@@ -43,10 +45,32 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   const isPublicPage = ['/', '/login', '/signup', '/forgot-password'].includes(location.pathname)
   const isLanding = location.pathname === '/'
   const showSidebar = isAuthenticated && !isPublicPage
+
+  // Fetch unread notification count
+  useEffect(() => {
+    if (!isAuthenticated) return
+    
+    const fetchUnreadCount = async () => {
+      try {
+        const response = await getNotifications()
+        const unread = response.filter((n: { isRead: boolean }) => !n.isRead).length
+        setUnreadCount(unread)
+      } catch {
+        // Silently fail - notifications not critical for UI
+      }
+    }
+    
+    fetchUnreadCount()
+    
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(fetchUnreadCount, 30000)
+    return () => clearInterval(interval)
+  }, [isAuthenticated])
 
   const handleLogout = async () => {
     setUserOpen(false)
@@ -70,9 +94,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2.5 group">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent-500 to-emerald-600 shadow-md shadow-accent-500/20 transition-transform duration-300 group-hover:scale-105">
-            <span className="text-sm font-bold text-white">H</span>
-          </div>
           <span className="text-lg font-bold tracking-tight text-navy-900 dark:text-white">
             Hack<span className="text-accent-600">ET</span>
           </span>
@@ -147,6 +168,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     >
                       <LayoutDashboard size={14} /> Dashboard
                     </Link>
+                    <Link
+                      to="/profile"
+                      onClick={() => setUserOpen(false)}
+                      className="mx-1.5 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-accent-600 transition-colors"
+                    >
+                      <User size={14} /> My Profile
+                    </Link>
                     {user?.role === 'ADMIN' && (
                       <Link
                         to="/admin"
@@ -172,7 +200,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link to="/login" className="hidden sm:inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-navy-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-all duration-200">
                 Log in
               </Link>
-              <Link to="/signup" className="btn-primary !rounded-xl">
+              <Link to="/signup" className="btn-primary !bg-[#17A398] !rounded-xl">
                 Sign up
               </Link>
             </div>
@@ -220,10 +248,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {/* Sidebar */}
         <aside className="hidden w-[268px] shrink-0 border-r border-white/80 dark:border-slate-700 bg-white/92 dark:bg-slate-900/92 backdrop-blur-xl lg:flex lg:flex-col">
           <div className="flex h-16 items-center border-b border-slate-100 dark:border-slate-700 px-6">
-            <Link to="/" className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent-500 to-emerald-600 shadow-sm">
-                <span className="text-sm font-bold text-white">H</span>
-              </div>
+            <Link to="/" className="flex items-center">
               <span className="text-lg font-bold tracking-tight text-navy-900 dark:text-white">
                 Hack<span className="text-accent-600">ET</span>
               </span>
@@ -273,13 +298,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </nav>
           <div className="border-t border-slate-100 dark:border-slate-700 p-3">
             <div className="flex items-center gap-2.5 rounded-2xl p-2 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent-500 to-emerald-500 text-xs font-bold text-white">
-                {user?.profile?.firstName?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-navy-900 dark:text-white">{user?.profile?.firstName || user?.email || 'User'}</p>
-                <p className="truncate text-2xs text-gray-400 dark:text-gray-500">{user?.role}</p>
-              </div>
+              <Link to="/profile" className="flex items-center gap-2.5 flex-1 min-w-0">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent-500 to-emerald-500 text-xs font-bold text-white">
+                  {user?.profile?.firstName?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-navy-900 dark:text-white">{user?.profile?.firstName || user?.email || 'User'}</p>
+                  <p className="truncate text-2xs text-gray-400 dark:text-gray-500">{user?.role}</p>
+                </div>
+              </Link>
               <button
                 type="button"
                 onClick={() => void handleLogout()}
@@ -306,6 +333,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
+                onClick={toggleTheme}
+                className="rounded-xl p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all duration-200"
+                aria-label="Toggle theme"
+              >
+                {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+              <button
+                type="button"
                 onClick={() => setLocale(locale === 'en' ? 'am' : 'en')}
                 className="rounded-2xl px-2.5 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300"
               >
@@ -314,8 +349,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link
                 to="/notifications"
                 className="relative rounded-xl p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all duration-200"
+                aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
               >
                 <Bell size={16} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full border-2 border-white dark:border-slate-900">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </Link>
             </div>
           </header>
@@ -377,11 +418,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="mb-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {/* Brand */}
             <div className="lg:col-span-1">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent-500 to-emerald-600">
-                  <span className="text-sm font-bold text-white">H</span>
-                </div>
-                <span className="text-lg font-bold tracking-tight text-navy-900">
+              <div className="flex items-center mb-4">
+                <span className="text-lg font-bold tracking-tight text-navy-900 dark:text-white">
                   Hack<span className="text-accent-600">ET</span>
                 </span>
               </div>
