@@ -20,6 +20,7 @@ function cardGradient(title: string) {
 }
 
 const STATUS_STYLES: Record<string, string> = {
+  UPCOMING: 'badge-yellow',
   REGISTRATION_OPEN: 'badge-green',
   IN_PROGRESS: 'badge-blue',
   COMPLETED: 'badge-gray',
@@ -75,7 +76,7 @@ export default function EventsPage() {
           />
         </div>
         <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 hide-scrollbar" role="group" aria-label="Filter by status">
-          {['ALL', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'IN_PROGRESS', 'COMPLETED'].map(s => (
+          {['ALL', 'UPCOMING', 'REGISTRATION_OPEN', 'IN_PROGRESS', 'JUDGING', 'COMPLETED'].map(s => (
             <button
               key={s}
               onClick={() => setStatus(s)}

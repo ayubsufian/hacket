@@ -1,5 +1,5 @@
 import { apiRequest } from './client'
-import type { Hackathon, Pagination, StaffAssignment, StaffInvitation, StaffRole, Team } from '../types/models'
+import type { EventParticipant, Hackathon, Pagination, StaffAssignment, StaffInvitation, StaffRole, Team } from '../types/models'
 
 export interface ListEventsInput {
   status?: string
@@ -28,6 +28,44 @@ export async function listEvents(input: ListEventsInput = {}) {
     data: response.data,
     pagination: response.pagination as Pagination,
   }
+}
+
+export async function listMyEvents(input: { page?: number; limit?: number } = {}) {
+  const query = new URLSearchParams()
+  if (input.page) query.set('page', String(input.page))
+  if (input.limit) query.set('limit', String(input.limit))
+  const queryString = query.toString()
+  const response = await apiRequest<Hackathon[]>(`/events/mine${queryString ? `?${queryString}` : ''}`, {
+    auth: true,
+  })
+  return {
+    data: response.data,
+    pagination: response.pagination as Pagination,
+  }
+}
+
+export async function publishEvent(eventId: string) {
+  const response = await apiRequest<{ hackathon: Hackathon }>(`/events/${eventId}/publish`, {
+    method: 'POST',
+    auth: true,
+  })
+  return response.data.hackathon
+}
+
+export interface EventContext {
+  status: string
+  staffRole: string | null
+  isLead: boolean
+  isRegistered: boolean
+  teamId: string | null
+  teamRole: string | null
+}
+
+export async function getEventContext(eventId: string) {
+  const response = await apiRequest<{ context: EventContext }>(`/events/${eventId}/context`, {
+    auth: true,
+  })
+  return response.data.context
 }
 
 export async function getEvent(idOrSlug: string) {
@@ -93,6 +131,14 @@ export async function getStaffAssignments(eventId: string) {
     auth: true,
   })
   return response.data
+}
+
+export async function getEventParticipants(eventId: string) {
+  const response = await apiRequest<{ participants: EventParticipant[] }>(
+    `/events/${eventId}/participants`,
+    { auth: true },
+  )
+  return response.data.participants
 }
 
 export async function acceptStaffInvitation(token: string) {

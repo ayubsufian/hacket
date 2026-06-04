@@ -74,6 +74,20 @@ exports.getById = catchAsync(async (req, res) => {
   });
 });
 
+exports.listMine = catchAsync(async (req, res) => {
+  const { page, limit } = req.query;
+  const result = await eventsService.listMine(req.user.id, req.user.role, {
+    page: parseInt(page, 10) || 1,
+    limit: parseInt(limit, 10) || 50,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: result.data,
+    pagination: result.pagination,
+  });
+});
+
 exports.list = catchAsync(async (req, res) => {
   const { status, region, theme, category, schedule, search, page, limit } = req.query;
 

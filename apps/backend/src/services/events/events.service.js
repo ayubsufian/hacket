@@ -319,6 +319,42 @@ class EventsService {
   }
 
   /**
+   * List hackathons owned by the authenticated organizer (includes DRAFT).
+   * Admins receive all hackathons.
+   */
+  async listMine(userId, role, { page = 1, limit = 50 } = {}) {
+    const where = role === 'ADMIN' ? {} : { organizerId: userId };
+    const offset = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      prisma.hackathon.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+        include: {
+          tags: { select: { tag: true } },
+          _count: { select: { teams: true } },
+        },
+      }),
+      prisma.hackathon.count({ where }),
+    ]);
+
+    return {
+      data: data.map((h) => ({
+        ...h,
+        tags: h.tags.map((t) => t.tag),
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
    * Update a hackathon.
    * @param {string} hackathonId
    * @param {string} organizerId - For permission check

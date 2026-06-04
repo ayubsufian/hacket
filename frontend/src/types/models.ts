@@ -2,6 +2,7 @@ export type UserRole = 'PARTICIPANT' | 'ORGANIZER' | 'JUDGE' | 'MENTOR' | 'ADMIN
 
 export type HackathonStatus =
   | 'DRAFT'
+  | 'UPCOMING'
   | 'REGISTRATION_OPEN'
   | 'REGISTRATION_CLOSED'
   | 'IN_PROGRESS'
@@ -89,6 +90,26 @@ export interface Hackathon {
     teams?: number
     submissions?: number
   }
+}
+
+export interface EventParticipant {
+  id: string
+  email: string
+  profile?: (UserProfile & {
+    university?: string | null
+    githubUrl?: string | null
+    linkedinUrl?: string | null
+    isSeekingTeam?: boolean
+  }) | null
+  registration: {
+    id: string
+    status: string
+    waitlistPosition?: number | null
+    checkedInAt?: string | null
+    registeredAt: string
+  }
+  team?: { id: string; name: string } | null
+  role?: string | null
 }
 
 export interface TeamMember {

@@ -1,13 +1,19 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck, ShieldAlert, ImageIcon, X, UserPlus, Copy, Check, Mail, Users, FileText, Upload } from 'lucide-react'
+import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck, ShieldAlert, ImageIcon, X, UserPlus, Copy, Check, Mail, Users, FileText, Upload, UserCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { listEvents, createEvent, deleteEvent, getStaffAssignments } from '../api/events'
+import { listMyEvents, createEvent, publishEvent, deleteEvent, getStaffAssignments, getEventParticipants } from '../api/events'
 import { normalizeScores } from '../api/judging'
 import { exportAnalyticsReport } from '../api/analytics'
 import { submitVerification } from '../api/auth'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import type { Hackathon, StaffAssignment, StaffInvitation, StaffRole } from '../types/models'
+import type { EventParticipant, Hackathon, StaffAssignment, StaffInvitation, StaffRole } from '../types/models'
+
+const REG_STATUS_BADGE: Record<string, string> = {
+    REGISTERED: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    CHECKED_IN: 'bg-blue-100 text-blue-800 border-blue-200',
+    WAITLISTED: 'bg-amber-100 text-amber-800 border-amber-200',
+}
 
 const ALL_STAFF_ROLES: { value: StaffRole; label: string }[] = [
     { value: 'JUDGE',          label: 'Judge' },
@@ -41,6 +47,7 @@ export default function OrganizerDashboard() {
     const [showForm, setShowForm] = useState(false)
     const [form, setForm] = useState({ title: '', description: '', region: '', start: '', end: '', min: 1, max: 4, coverImageUrl: '' })
     const [creating, setCreating] = useState(false)
+    const [publishingId, setPublishingId] = useState<string | null>(null)
     const [createError, setCreateError] = useState<string | null>(null)
     const [deletingId, setDeletingId] = useState<string | null>(null)
     const [normalizingId, setNormalizingId] = useState<string | null>(null)
@@ -49,6 +56,9 @@ export default function OrganizerDashboard() {
     const [staffByEvent, setStaffByEvent] = useState<Record<string, StaffAssignment[]>>({})
     const [staffEventId, setStaffEventId] = useState<string | null>(null)
     const [staffLoading, setStaffLoading] = useState(false)
+    const [participantsByEvent, setParticipantsByEvent] = useState<Record<string, EventParticipant[]>>({})
+    const [participantsEventId, setParticipantsEventId] = useState<string | null>(null)
+    const [participantsLoading, setParticipantsLoading] = useState(false)
     const [inviteEventId, setInviteEventId] = useState<string | null>(null)
     const [inviteForm, setInviteForm] = useState({ email: '', role: 'JUDGE' as StaffRole })
     const [generatedLink, setGeneratedLink] = useState('')
@@ -62,8 +72,8 @@ export default function OrganizerDashboard() {
         try {
             setLoading(true)
             setError(null)
-            const r = await listEvents({ limit: 50 })
-            setEvents(r.data?.filter(event => user?.role === 'ADMIN' || event.organizerId === user?.id) ?? [])
+            const r = await listMyEvents({ limit: 50 })
+            setEvents(r.data ?? [])
         }
         catch (err: any) { setError(err.message || 'Unable to connect') }
         finally { setLoading(false) }
@@ -99,8 +109,23 @@ export default function OrganizerDashboard() {
                 throw new Error('Minimum team size cannot be greater than maximum team size.')
             }
 
-            const registrationStart = new Date(startDate.getTime() - 14 * 24 * 60 * 60 * 1000)
-            const registrationEnd = new Date(startDate.getTime() - 24 * 60 * 60 * 1000)
+            if (startDate.getTime() - Date.now() < 60 * 60 * 1000) {
+                throw new Error('Event start must be at least 1 hour from now.')
+            }
+
+            const coverRaw = form.coverImageUrl.trim()
+            let coverImageUrl: string | null = null
+            if (coverRaw) {
+                try {
+                    new URL(coverRaw)
+                    coverImageUrl = coverRaw
+                } catch {
+                    throw new Error('Cover image must be a valid URL (https://...).')
+                }
+            }
+
+            const registrationStart = new Date()
+            const registrationEnd = new Date(startDate.getTime() - 60 * 1000)
 
             await createEvent({
                 title: form.title.trim(),
@@ -115,7 +140,7 @@ export default function OrganizerDashboard() {
                 minTeamSize: form.min,
                 isVirtual: !form.region.trim(),
                 region: form.region.trim() || null,
-                coverImageUrl: form.coverImageUrl.trim() || null,
+                coverImageUrl,
                 prizes: null,
                 tags: []
             })
@@ -125,6 +150,22 @@ export default function OrganizerDashboard() {
         } catch (err: any) {
             setCreateError(err.message || 'Unable to create this event draft.')
         } finally { setCreating(false) }
+    }
+
+    const handlePublish = async (ev: Hackathon) => {
+        if (ev.status !== 'DRAFT') return
+        if (!confirm(`Open registration for "${ev.title}"? It will become visible to participants.`)) return
+        try {
+            setPublishingId(ev.id)
+            setActionMsg(null)
+            await publishEvent(ev.id)
+            success(`"${ev.title}" is now open for registration.`)
+            await load()
+        } catch (err: any) {
+            setActionMsg({ type: 'err', text: err.message || 'Publish failed.' })
+        } finally {
+            setPublishingId(null)
+        }
     }
 
     const generateInviteLink = (eventId: string) => {
@@ -204,6 +245,26 @@ export default function OrganizerDashboard() {
         } catch {
             setStaffByEvent(prev => ({ ...prev, [eventId]: [] }))
         } finally { setStaffLoading(false) }
+    }
+
+    const toggleParticipantsPanel = async (eventId: string) => {
+        if (participantsEventId === eventId) { setParticipantsEventId(null); return }
+        setParticipantsEventId(eventId)
+        try {
+            setParticipantsLoading(true)
+            const list = await getEventParticipants(eventId)
+            setParticipantsByEvent(prev => ({ ...prev, [eventId]: Array.isArray(list) ? list : [] }))
+        } catch (err: any) {
+            setParticipantsByEvent(prev => ({ ...prev, [eventId]: [] }))
+            toastError(err.message || 'Unable to load participants.')
+        } finally { setParticipantsLoading(false) }
+    }
+
+    const participantName = (p: EventParticipant) => {
+        const first = p.profile?.firstName?.trim()
+        const last = p.profile?.lastName?.trim()
+        if (first || last) return [first, last].filter(Boolean).join(' ')
+        return p.email
     }
 
     const handleDelete = async (ev: Hackathon) => {
@@ -458,6 +519,17 @@ export default function OrganizerDashboard() {
                                     </div>
                                 </Link>
                                 <div className="flex items-center gap-2 shrink-0">
+                                    {ev.status === 'DRAFT' && (
+                                        <button
+                                            onClick={() => void handlePublish(ev)}
+                                            disabled={publishingId === ev.id}
+                                            title="Open registration"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+                                        >
+                                            {publishingId === ev.id ? <Loader2 size={13} className="animate-spin" /> : <Globe size={13} />}
+                                            Publish
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => void handleNormalize(ev)}
                                         disabled={normalizingId === ev.id}
@@ -486,6 +558,16 @@ export default function OrganizerDashboard() {
                                         Delete
                                     </button>
                                     <button
+                                        onClick={() => void toggleParticipantsPanel(ev.id)}
+                                        title="View registered participants"
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${participantsEventId === ev.id ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'}`}
+                                    >
+                                        <UserCheck size={13} /> Participants
+                                        {participantsByEvent[ev.id] != null && (
+                                            <span className="opacity-70">({participantsByEvent[ev.id].length})</span>
+                                        )}
+                                    </button>
+                                    <button
                                         onClick={() => void toggleStaffPanel(ev.id)}
                                         title="View staff"
                                         className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${staffEventId === ev.id ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-blue-200 text-blue-600 hover:bg-blue-50'}`}
@@ -502,6 +584,52 @@ export default function OrganizerDashboard() {
                                     <Link to={`/events/${ev.id}`}><ChevronRight className="text-gray-300 group-hover:text-accent-500 transition-all" /></Link>
                                 </div>
                             </div>
+
+                            {/* Registered participants panel */}
+                            {participantsEventId === ev.id && (
+                                <div className="mt-4 p-4 rounded-xl border border-emerald-100 bg-emerald-50/40 space-y-3">
+                                    <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
+                                        <UserCheck size={13} /> Registered participants — <span className="font-bold truncate">{ev.title}</span>
+                                    </p>
+                                    {participantsLoading ? (
+                                        <div className="flex items-center gap-2 text-xs text-emerald-500"><Loader2 size={13} className="animate-spin" /> Loading participants…</div>
+                                    ) : (participantsByEvent[ev.id] ?? []).length === 0 ? (
+                                        <p className="text-xs text-emerald-600">No participants registered yet. Publish the event and share it to start collecting registrations.</p>
+                                    ) : (
+                                        <div className="overflow-x-auto rounded-lg border border-emerald-100 bg-white">
+                                            <table className="w-full text-xs">
+                                                <thead>
+                                                    <tr className="border-b border-emerald-50 bg-emerald-50/60 text-left text-emerald-800">
+                                                        <th className="px-3 py-2 font-semibold">Name</th>
+                                                        <th className="px-3 py-2 font-semibold">Email</th>
+                                                        <th className="px-3 py-2 font-semibold">Status</th>
+                                                        <th className="px-3 py-2 font-semibold">Team</th>
+                                                        <th className="px-3 py-2 font-semibold">Registered</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50">
+                                                    {(participantsByEvent[ev.id] ?? []).map(p => (
+                                                        <tr key={p.id} className="text-gray-700 hover:bg-emerald-50/30">
+                                                            <td className="px-3 py-2 font-medium">{participantName(p)}</td>
+                                                            <td className="px-3 py-2 text-gray-500">{p.email}</td>
+                                                            <td className="px-3 py-2">
+                                                                <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold uppercase ${REG_STATUS_BADGE[p.registration.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                                                                    {p.registration.status.replace(/_/g, ' ')}
+                                                                    {p.registration.waitlistPosition != null && ` #${p.registration.waitlistPosition}`}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-gray-500">{p.team?.name ?? '—'}</td>
+                                                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                                                {new Date(p.registration.registeredAt).toLocaleString()}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Staff list panel */}
                             {staffEventId === ev.id && (

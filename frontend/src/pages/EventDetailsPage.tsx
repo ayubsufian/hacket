@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Calendar, Globe, MapPin, Users, Loader2, Target, MonitorPlay, ChevronLeft, Download } from 'lucide-react'
-import { getEvent, registerForEvent, getCalendar } from '../api/events'
+import { getEvent, getEventContext, registerForEvent, getCalendar } from '../api/events'
 import { useAuth } from '../contexts/AuthContext'
 import type { Hackathon } from '../types/models'
 
@@ -12,6 +12,7 @@ export default function EventDetailsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [registering, setRegistering] = useState(false)
+  const [isRegistered, setIsRegistered] = useState(false)
   const [regMsg, setRegMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [exportingCalendar, setExportingCalendar] = useState(false)
 
@@ -29,14 +30,26 @@ export default function EventDetailsPage() {
     return () => { active = false }
   }, [id])
 
+  useEffect(() => {
+    if (!id || !isAuthenticated) {
+      setIsRegistered(false)
+      return
+    }
+    let active = true
+    getEventContext(id)
+      .then(ctx => { if (active) setIsRegistered(ctx.isRegistered) })
+      .catch(() => { if (active) setIsRegistered(false) })
+    return () => { active = false }
+  }, [id, isAuthenticated])
+
   const handleRegister = async () => {
     if (!id) return
     try {
       setRegistering(true)
       setRegMsg(null)
       await registerForEvent(id)
+      setIsRegistered(true)
       setRegMsg({ type: 'ok', text: 'You have successfully registered for this event!' })
-      // Auto-refresh to get updated state if needed, though we don't have a distinct "isRegistered" boolean on the payload yet.
     } catch (err) {
       setRegMsg({ type: 'err', text: err instanceof Error ? err.message : 'Registration failed' })
     } finally {
@@ -88,6 +101,13 @@ export default function EventDetailsPage() {
   )
 
   const isRegOpen = event.status === 'REGISTRATION_OPEN'
+  const now = Date.now()
+  const withinWindow =
+    !!event.registrationStart &&
+    !!event.registrationEnd &&
+    now >= new Date(event.registrationStart).getTime() &&
+    now <= new Date(event.registrationEnd).getTime()
+  const canRegister = isRegOpen && withinWindow && !isRegistered
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-fade-up">
@@ -147,14 +167,20 @@ export default function EventDetailsPage() {
             {!isAuthenticated ? (
               <Link to="/signup" className="btn-primary flex-shrink-0">Sign up to register</Link>
             ) : user?.role === 'PARTICIPANT' ? (
-              <button
-                onClick={() => void handleRegister()}
-                disabled={!isRegOpen || registering}
-                className="btn-primary flex-shrink-0"
-              >
-                {registering ? <><Loader2 size={16} className="animate-spin" /> Processing...</> :
-                  !isRegOpen ? 'Registration closed' : 'Register now'}
-              </button>
+              isRegistered ? (
+                <span className="badge badge-green flex-shrink-0">Registered</span>
+              ) : (
+                <button
+                  onClick={() => void handleRegister()}
+                  disabled={!canRegister || registering}
+                  className="btn-primary flex-shrink-0"
+                >
+                  {registering ? <><Loader2 size={16} className="animate-spin" /> Processing...</> :
+                    !isRegOpen ? 'Registration closed' :
+                    !withinWindow ? 'Registration window closed' :
+                    'Register now'}
+                </button>
+              )
             ) : null}
           </div>
 

@@ -403,6 +403,8 @@ model UserProfile {
   userId                     String    @unique @map("user_id") @db.Uuid
   firstName                  String?   @map("first_name")
   lastName                   String?   @map("last_name")
+  firstNameAm                String?   @map("first_name_am")
+  lastNameAm                 String?   @map("last_name_am")
   bio                        String?   @db.Text
   avatarUrl                  String?   @map("avatar_url")
   phone                      String?

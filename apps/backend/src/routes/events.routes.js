@@ -147,6 +147,14 @@ const eventUpdateSchema = updateSchema.custom(validateEventShape);
 
 // Public discovery
 router.get('/', eventsController.list);
+router.get(
+  '/mine',
+  authenticate,
+  ensureVerified,
+  ensureProfileComplete,
+  authorize('ORGANIZER', 'ADMIN'),
+  eventsController.listMine
+);
 router.get('/:id', eventsController.getById);
 router.get('/:id/calendar', eventsController.getCalendar);
 router.get('/:id/schedule', eventsController.getSchedule);

@@ -69,7 +69,16 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     const payload = body as ApiErrorShape | null
+    const validationDetails = Array.isArray(payload?.details)
+      ? (payload.details as Array<{ message?: string }>)
+          .map((d) => d.message)
+          .filter(Boolean)
+          .join('; ')
+      : ''
     const msg =
+      (validationDetails && payload?.message
+        ? `${payload.message} ${validationDetails}`
+        : validationDetails) ||
       payload?.message ||
       (response.status === 401
         ? 'Invalid credentials. Please check your email and password.'
