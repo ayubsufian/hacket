@@ -413,7 +413,8 @@ model UserProfile {
   githubUrl                  String?   @map("github_url")
   linkedinUrl                String?   @map("linkedin_url")
   preferredLocale            String    @default("en") @map("preferred_locale") @db.VarChar(5)
-    city                       String?
+  preferredCalendar          CalendarType @default(GREGORIAN) @map("preferred_calendar")
+  city                       String?
   region                     String?
   representativeName         String?   @map("representative_name") @db.VarChar(255) // FR-USR-02: organizer representative
   dateOfBirth                DateTime? @map("date_of_birth")

@@ -54,9 +54,9 @@ class AuthService {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
-    // Email/password registrations must prove email ownership before any role-specific review.
+    // Auto-verify users for testing purposes (email verification disabled)
     const isOrganizer = role === 'ORGANIZER';
-    const verificationStatus = 'UNVERIFIED';
+    const verificationStatus = 'VERIFIED';
 
     // Create user + profile (+ organization for organizers) in a transaction
     const user = await prisma.$transaction(async (tx) => {

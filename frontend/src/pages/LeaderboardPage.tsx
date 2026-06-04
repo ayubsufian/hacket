@@ -75,9 +75,9 @@ export default function LeaderboardPage() {
                         <p>Compiling scores...</p>
                     </div>
                 ) : entries?.length === 0 ? (
-                    <div className="py-20 text-center text-gray-500 flex flex-col items-center">
-                        <Award size={48} className="text-gray-300 mb-4" />
-                        <p className="text-lg font-medium text-gray-900">No rankings yet</p>
+                    <div className="py-20 text-center text-gray-500 dark:text-gray-400 flex flex-col items-center">
+                        <Award size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
+                        <p className="text-lg font-medium text-gray-900 dark:text-white">No rankings yet</p>
                         <p className="text-sm mt-1">Scores will appear here once judging is complete.</p>
                     </div>
                 ) : (

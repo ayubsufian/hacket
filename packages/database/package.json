@@ -1,16 +1,23 @@
 {
   "name": "database",
   "version": "1.0.0",
-  "description": "",
+  "description": "HackET Database Package with Prisma Schema and Seed Data",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "seed": "node ../../apps/backend/src/config/seed.js",
+    "db:reset": "prisma migrate reset --force && npm run seed",
+    "db:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "node ../../apps/backend/src/config/seed.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "dotenv": "^17.4.2",
     "prisma": "^7.7.0"
   },
   "dependencies": {

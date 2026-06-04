@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck, ImageIcon, X, UserPlus, Copy, Check, Mail, Users } from 'lucide-react'
+import { PlusCircle, Loader2, Globe, Settings, MapPin, Calendar, ChevronRight, Trash2, BarChart2, ShieldCheck, ShieldAlert, ImageIcon, X, UserPlus, Copy, Check, Mail, Users, FileText, Upload } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { listEvents, createEvent, deleteEvent, generateStaffInvitationLink, getStaffAssignments } from '../api/events'
+import { listEvents, createEvent, deleteEvent, getStaffAssignments } from '../api/events'
 import { normalizeScores } from '../api/judging'
 import { exportAnalyticsReport } from '../api/analytics'
+import { submitVerification } from '../api/auth'
 import { useAuth } from '../contexts/AuthContext'
-import type { Hackathon, StaffAssignment, StaffRole } from '../types/models'
+import { useToast } from '../contexts/ToastContext'
+import type { Hackathon, StaffAssignment, StaffInvitation, StaffRole } from '../types/models'
 
 const ALL_STAFF_ROLES: { value: StaffRole; label: string }[] = [
     { value: 'JUDGE',          label: 'Judge' },
@@ -27,9 +29,14 @@ const ROLE_BADGE: Record<StaffRole, string> = {
 
 export default function OrganizerDashboard() {
     const { user, isAuthenticated } = useAuth()
+    const { success, error: toastError } = useToast()
     const [events, setEvents] = useState<Hackathon[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    
+    // Verification submission state
+    const [verificationDocUrl, setVerificationDocUrl] = useState('')
+    const [submittingVerification, setSubmittingVerification] = useState(false)
 
     const [showForm, setShowForm] = useState(false)
     const [form, setForm] = useState({ title: '', description: '', region: '', start: '', end: '', min: 1, max: 4, coverImageUrl: '' })
@@ -48,6 +55,8 @@ export default function OrganizerDashboard() {
     const [generatingLink, setGeneratingLink] = useState(false)
     const [inviteError, setInviteError] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
+    const [existingInvite, setExistingInvite] = useState<StaffInvitation | null>(null)
+    const [cancellingInvite, setCancellingInvite] = useState(false)
 
     const load = async () => {
         try {
@@ -118,21 +127,54 @@ export default function OrganizerDashboard() {
         } finally { setCreating(false) }
     }
 
-    const generateInviteLink = async (eventId: string) => {
+    const generateInviteLink = (eventId: string) => {
         if (!inviteForm.email.trim()) return
         try {
             setGeneratingLink(true)
             setInviteError(null)
-            // Call backend to generate secure invitation link
-            const result = await generateStaffInvitationLink(eventId, {
-                email: inviteForm.email.trim(),
-                role: inviteForm.role
-            })
-            setGeneratedLink(result.invitationLink)
+            setExistingInvite(null)
+
+            // Encode all invitation data in the URL itself (no backend storage needed)
+            const expiresAt = new Date()
+            expiresAt.setDate(expiresAt.getDate() + 7)
+            
+            const invitationData = {
+                e: eventId,
+                em: inviteForm.email.trim(),
+                r: inviteForm.role,
+                exp: expiresAt.getTime(),
+            }
+            // Base64 encode the data
+            const encoded = btoa(JSON.stringify(invitationData))
+            
+            const baseUrl = window.location.origin
+            const invitationLink = `${baseUrl}/staff/accept-invitation?d=${encoded}`
+            setGeneratedLink(invitationLink)
+            success('Invitation link generated! (URL contains all invitation data)')
         } catch (err: any) {
-            setInviteError(err.message || 'Failed to generate invitation link. Backend endpoint may not be implemented yet.')
+            setInviteError(err.message || 'Failed to generate invitation link.')
         } finally {
             setGeneratingLink(false)
+        }
+    }
+
+    const cancelAndRegenerate = (eventId: string) => {
+        if (!existingInvite) return
+        try {
+            setCancellingInvite(true)
+            // Remove from localStorage
+            const storageKey = `staff_invites_${eventId}`
+            const existing = JSON.parse(localStorage.getItem(storageKey) || '[]')
+            const filtered = existing.filter((inv: any) => inv.id !== existingInvite.id)
+            localStorage.setItem(storageKey, JSON.stringify(filtered))
+            setExistingInvite(null)
+            setGeneratedLink('')
+            // Now generate a new one
+            generateInviteLink(eventId)
+        } catch (err: any) {
+            toastError(err.message || 'Failed to cancel invitation.')
+        } finally {
+            setCancellingInvite(false)
         }
     }
 
@@ -147,6 +189,7 @@ export default function OrganizerDashboard() {
         setInviteEventId(inviteEventId === eventId ? null : eventId)
         setGeneratedLink('')
         setInviteError(null)
+        setExistingInvite(null)
         setInviteForm({ email: '', role: 'JUDGE' })
     }
 
@@ -199,15 +242,30 @@ export default function OrganizerDashboard() {
         } finally { setExportingId(null) }
     }
 
+    const handleSubmitVerification = async (e: FormEvent) => {
+        e.preventDefault()
+        if (!verificationDocUrl.trim()) return
+        try {
+            setSubmittingVerification(true)
+            await submitVerification(verificationDocUrl.trim())
+            success('Verification document submitted for admin review')
+            setVerificationDocUrl('')
+            // Refresh user data to update status
+            window.location.reload()
+        } catch (err: any) {
+            toastError(err.message || 'Failed to submit verification document')
+        } finally { setSubmittingVerification(false) }
+    }
+
     if (!isAuthenticated || (user?.role !== 'ORGANIZER' && user?.role !== 'ADMIN')) return (
-        <div className="py-20 text-center"><h1 className="text-xl font-bold text-gray-900">Access Denied</h1><p className="mt-2 text-gray-500">Only organizers can access this page.</p></div>
+        <div className="py-20 text-center"><h1 className="text-xl font-bold text-gray-900 dark:text-white">Access Denied</h1><p className="mt-2 text-gray-500 dark:text-gray-400">Only organizers can access this page.</p></div>
     )
 
     if (error && !events.length) return (
-        <div className="max-w-5xl mx-auto alert-error flex flex-col items-center justify-center py-12 px-4 text-center bg-white border border-red-100 rounded-xl shadow-sm mt-12">
+        <div className="max-w-5xl mx-auto alert-error flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-slate-800 border border-red-100 dark:border-red-900/30 rounded-xl shadow-sm mt-12">
             <Globe className="text-red-400 mb-3" size={32} />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Systems Offline</h3>
-            <p className="text-sm text-gray-500 max-w-sm mb-6">{error}</p>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Systems Offline</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mb-6">{error}</p>
             <button onClick={() => void load()} className="btn-primary shadow-red-500/20 from-red-500 to-red-600">Retry Connection</button>
         </div>
     )
@@ -232,25 +290,86 @@ export default function OrganizerDashboard() {
 
             {/* Verification Status Banner */}
             {!isVerified && (
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-xl p-4 flex items-start gap-3">
-                    <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center shrink-0">
-                        <ShieldCheck size={20} />
+                <div className={`border rounded-xl p-4 flex flex-col gap-4 ${
+                    user?.verificationStatus === 'UNDER_REVIEW' 
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50' 
+                        : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50'
+                }`}>
+                    <div className="flex items-start gap-3">
+                        <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
+                            user?.verificationStatus === 'UNDER_REVIEW'
+                                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'
+                                : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600'
+                        }`}>
+                            {user?.verificationStatus === 'UNDER_REVIEW' ? <ShieldCheck size={20} /> : <ShieldAlert size={20} />}
+                        </div>
+                        <div className="flex-1">
+                            <p className={`font-semibold ${
+                                user?.verificationStatus === 'UNDER_REVIEW'
+                                    ? 'text-blue-800 dark:text-blue-200'
+                                    : 'text-amber-800 dark:text-amber-200'
+                            }`}>
+                                {user?.verificationStatus === 'UNDER_REVIEW' ? 'Under Review' : 'Verification Required'}
+                            </p>
+                            <p className={`text-sm mt-1 ${
+                                user?.verificationStatus === 'UNDER_REVIEW'
+                                    ? 'text-blue-700 dark:text-blue-300'
+                                    : 'text-amber-700 dark:text-amber-300'
+                            }`}>
+                                {user?.verificationStatus === 'UNDER_REVIEW' ? (
+                                    <>Your account is <strong>under review</strong>. An admin will verify your documents shortly.</>
+                                ) : (
+                                    <>Your organizer account is <strong>{user?.verificationStatus?.replace('_', ' ') || 'PENDING'}</strong>. 
+                                    Submit verification documents below to proceed.</>
+                                )}
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <p className="font-semibold text-amber-800 dark:text-amber-200">Verification Required</p>
-                        <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                            Your organizer account is <strong>{user?.verificationStatus?.replace('_', ' ') || 'PENDING'}</strong>. 
-                            You can view your events but cannot create new ones until an admin verifies your account.
-                        </p>
-                    </div>
+                    
+                    {/* Submit Verification Document Form - Only show for PENDING status */}
+                    {user?.verificationStatus === 'PENDING' && (
+                        <form onSubmit={handleSubmitVerification} className="border-t border-amber-200 dark:border-amber-800/30 pt-4 mt-2">
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-amber-700 dark:text-amber-300 mb-1.5">
+                                        <FileText size={12} className="inline mr-1" /> Verification Document URL
+                                    </label>
+                                    <input
+                                        type="url"
+                                        required
+                                        value={verificationDocUrl}
+                                        onChange={e => setVerificationDocUrl(e.target.value)}
+                                        placeholder="https://example.com/verification-doc.pdf"
+                                        className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-gray-700 dark:text-gray-300"
+                                    />
+                                    <p className="text-xs text-amber-600/70 dark:text-amber-400/70 mt-1">
+                                        Link to your business registration, license, or institutional verification document
+                                    </p>
+                                </div>
+                                <div className="flex items-end">
+                                    <button
+                                        type="submit"
+                                        disabled={submittingVerification || !verificationDocUrl.trim()}
+                                        className="btn-primary bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {submittingVerification ? (
+                                            <><Loader2 size={16} className="animate-spin mr-2" /> Submitting...</>
+                                        ) : (
+                                            <><Upload size={16} className="mr-2" /> Submit</>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    )}
                 </div>
             )}
 
             {showForm && (
-                <div className="card-elevated p-6 sm:p-8 border border-orange-100 bg-gradient-to-br from-white to-orange-50/30 animate-slide-in-left">
+                <div className="card-elevated p-6 sm:p-8 border border-orange-100 dark:border-orange-900/30 bg-gradient-to-br from-white to-orange-50/30 dark:from-slate-800 dark:to-orange-900/10 animate-slide-in-left">
                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-gray-900">New Hackathon Draft</h2>
-                        <button onClick={() => setShowForm(false)} className="text-sm font-medium text-gray-500 hover:text-gray-800">Cancel</button>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">New Hackathon Draft</h2>
+                        <button onClick={() => setShowForm(false)} className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">Cancel</button>
                     </div>
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {createError && <div className="alert-error">{createError}</div>}
@@ -322,20 +441,20 @@ export default function OrganizerDashboard() {
                 </div>
             )}
 
-            <div className="card-elevated border border-gray-100 overflow-hidden bg-white">
-                <div className="border-b border-gray-100 p-5 bg-gray-50/50"><h2 className="text-lg font-bold text-gray-900">Your Hackathons</h2></div>
-                <div className="divide-y divide-gray-100">
-                    {loading ? <div className="p-12 text-center text-gray-400"><Loader2 className="animate-spin mx-auto text-accent-500" size={32} /></div> : events?.length === 0 ? <p className="p-12 text-center text-gray-500">You haven't created any events yet.</p> : events?.map(ev => (
+            <div className="card-elevated border border-gray-100 dark:border-gray-700 overflow-hidden bg-white dark:bg-slate-800">
+                <div className="border-b border-gray-100 dark:border-gray-700 p-5 bg-gray-50/50 dark:bg-slate-800/50"><h2 className="text-lg font-bold text-gray-900 dark:text-white">Your Hackathons</h2></div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {loading ? <div className="p-12 text-center text-gray-400 dark:text-gray-500"><Loader2 className="animate-spin mx-auto text-accent-500" size={32} /></div> : events?.length === 0 ? <p className="p-12 text-center text-gray-500 dark:text-gray-400">You haven't created any events yet.</p> : events?.map(ev => (
                         <div key={ev.id} className="p-5 hover:bg-gray-50 transition-colors group">
                             <div className="flex items-start justify-between gap-4">
                                 <Link to={`/events/${ev.id}`} className="flex-1 min-w-0">
                                     <div className="flex items-center gap-3 mb-1.5">
                                         <span className={`badge ${ev.status === 'REGISTRATION_OPEN' ? 'badge-green' : ev.status === 'DRAFT' ? 'badge-yellow' : 'badge-gray'}`}>{ev.status?.replace(/_/g, ' ') || '—'}</span>
                                     </div>
-                                    <h3 className="font-bold text-gray-900 group-hover:text-accent-600 transition-colors text-lg truncate">{ev.title}</h3>
-                                    <div className="mt-2 flex items-center gap-4 text-xs text-gray-500 font-medium">
-                                        <span className="flex items-center gap-1"><Calendar size={14} className="text-gray-400" /> {ev.eventStart ? new Date(ev.eventStart).toLocaleDateString() : '—'}</span>
-                                        <span className="flex items-center gap-1"><MapPin size={14} className="text-gray-400" /> {ev.region || 'Virtual'}</span>
+                                    <h3 className="font-bold text-gray-900 dark:text-gray-200 group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors text-lg truncate">{ev.title}</h3>
+                                    <div className="mt-2 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                        <span className="flex items-center gap-1"><Calendar size={14} className="text-gray-400 dark:text-gray-500" /> {ev.eventStart ? new Date(ev.eventStart).toLocaleDateString() : '—'}</span>
+                                        <span className="flex items-center gap-1"><MapPin size={14} className="text-gray-400 dark:text-gray-500" /> {ev.region || 'Virtual'}</span>
                                     </div>
                                 </Link>
                                 <div className="flex items-center gap-2 shrink-0">
@@ -463,6 +582,22 @@ export default function OrganizerDashboard() {
                                                 <p className="text-xs text-violet-600">
                                                     Send this link to <strong>{inviteForm.email}</strong>. They open it, sign in (or register), and their account gets the <strong>{inviteForm.role}</strong> role for this event.
                                                 </p>
+                                                {existingInvite && (
+                                                    <div className="mt-2 pt-2 border-t border-violet-200/50">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <ShieldAlert size={14} className="text-amber-500" />
+                                                            <span className="text-xs text-amber-600">A pending invitation already exists for this email.</span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            disabled={cancellingInvite}
+                                                            onClick={() => void cancelAndRegenerate(ev.id)}
+                                                            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50 transition-colors"
+                                                        >
+                                                            {cancellingInvite ? <><Loader2 size={12} className="animate-spin" /> Cancelling...</> : <><Trash2 size={12} /> Cancel & Generate New Link</>}
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     )}

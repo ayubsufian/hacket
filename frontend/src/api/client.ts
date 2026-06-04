@@ -1,6 +1,6 @@
 import type { ApiErrorShape, ApiResponse } from '../types/api'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1'
 const TOKEN_STORAGE_KEY = 'hacket_token'
 const REQUEST_TIMEOUT = 10_000
 

@@ -53,6 +53,47 @@ export async function logout() {
 //   })
 // }
 
+export async function submitVerification(verificationDocUrl: string) {
+  const response = await apiRequest<{ success: boolean; message: string }>('/auth/submit-verification', {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ verificationDocUrl }),
+  })
+  return response.data
+}
+
+export async function forgotPassword(email: string) {
+  const response = await apiRequest<{ message: string; resetOtp?: string; note?: string }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+  return response.data
+}
+
+export async function resetPassword(email: string, otp: string, newPassword: string) {
+  const response = await apiRequest<{ message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp, newPassword }),
+  })
+  return response.data
+}
+
+export async function verifyEmail(email: string, otp: string) {
+  const response = await apiRequest<{ message: string }>('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp }),
+  })
+  return response.data
+}
+
+export async function resendVerificationEmail(email: string) {
+  const response = await apiRequest<{ message: string; verificationOtp?: string; note?: string }>('/auth/resend-verification-email', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+  return response.data
+}
+
 // TODO: Implement staff invitation functionality when backend endpoint is available
 // export async function acceptStaffInvitation(eventId: string, token: string) {
 //   return apiRequest<{ message: string }>(`/events/${eventId}/staff/invitations/accept`, {

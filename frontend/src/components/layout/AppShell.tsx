@@ -11,35 +11,36 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { getDashboardRoute } from '../../utils/appState'
 import { getNotifications } from '../../api/notifications'
 
-const publicNav = [
-  { to: '/', label: 'Home' },
-  { to: '/events', label: 'Events' },
-  { to: '/leaderboard', label: 'Leaderboard' },
+// Translation keys for navigation
+const publicNavKeys = [
+  { to: '/', labelKey: 'nav.home' },
+  { to: '/events', labelKey: 'nav.discover' },
+  { to: '/leaderboard', labelKey: 'nav.leaderboard' },
 ]
 
-const sidebarNav = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/events', label: 'Events', icon: Calendar },
-  { to: '/teams', label: 'Teams', icon: Users },
-  { to: '/submissions', label: 'Submissions', icon: FileText },
-  { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-  { to: '/notifications', label: 'Notifications', icon: Bell },
-  { to: '/profile', label: 'Profile', icon: User },
+const sidebarNavKeys = [
+  { to: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { to: '/events', labelKey: 'nav.discover', icon: Calendar },
+  { to: '/teams', labelKey: 'nav.teams', icon: Users },
+  { to: '/submissions', labelKey: 'nav.submissions', icon: FileText },
+  { to: '/leaderboard', labelKey: 'nav.leaderboard', icon: Trophy },
+  { to: '/notifications', labelKey: 'nav.notifications', icon: Bell },
+  { to: '/profile', labelKey: 'nav.profile', icon: User },
 ]
 
-const roleNav: Record<string, { to: string; label: string; icon: typeof Settings }[]> = {
-  JUDGE: [{ to: '/judge', label: 'Judging', icon: ClipboardCheck }],
-  ORGANIZER: [{ to: '/organizer', label: 'Manage Events', icon: Settings }],
+const roleNavKeys: Record<string, { to: string; labelKey: string; icon: typeof Settings }[]> = {
+  JUDGE: [{ to: '/judge', labelKey: 'nav.judging', icon: ClipboardCheck }],
+  ORGANIZER: [{ to: '/organizer', labelKey: 'nav.organizers', icon: Settings }],
   ADMIN: [
-    { to: '/organizer', label: 'Manage Events', icon: Settings },
-    { to: '/judge', label: 'Judging', icon: ClipboardCheck },
-    { to: '/admin', label: 'Admin', icon: Settings },
+    { to: '/organizer', labelKey: 'nav.organizers', icon: Settings },
+    { to: '/judge', labelKey: 'nav.judging', icon: ClipboardCheck },
+    { to: '/admin', labelKey: 'nav.admin', icon: Settings },
   ],
 }
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const { user, isAuthenticated, logout } = useAuth()
-  const { locale, setLocale } = useTranslation()
+  const { locale, setLocale, t } = useTranslation()
   const { resolvedTheme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
@@ -78,11 +79,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
     navigate('/')
   }
 
-  const extraLinks = roleNav[user?.role ?? ''] ?? []
+  const extraLinks = roleNavKeys[user?.role ?? '']?.map(n => ({ ...n, label: t(n.labelKey) })) ?? []
   const dashboardRoute = getDashboardRoute(user?.role)
   const primaryNav = [
-    { to: dashboardRoute, label: 'Dashboard', icon: LayoutDashboard },
-    ...sidebarNav.slice(1),
+    { to: dashboardRoute, label: t('nav.dashboard'), icon: LayoutDashboard },
+    ...sidebarNavKeys.slice(1).map(n => ({ ...n, label: t(n.labelKey) })),
   ]
 
   /* ── Public topbar ── */
@@ -101,7 +102,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         {/* Desktop nav */}
         <nav className="hidden items-center gap-1 sm:flex">
-          {publicNav.map(n => (
+          {publicNavKeys.map((n: { to: string; labelKey: string }) => (
             <NavLink
               key={n.to}
               to={n.to}
@@ -113,7 +114,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 }`
               }
             >
-              {n.label}
+              {t(n.labelKey)}
             </NavLink>
           ))}
         </nav>
@@ -166,14 +167,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       onClick={() => setUserOpen(false)}
                       className="mx-1.5 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-accent-600 transition-colors"
                     >
-                      <LayoutDashboard size={14} /> Dashboard
+                      <LayoutDashboard size={14} /> {t('nav.dashboard')}
                     </Link>
                     <Link
                       to="/profile"
                       onClick={() => setUserOpen(false)}
                       className="mx-1.5 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-accent-600 transition-colors"
                     >
-                      <User size={14} /> My Profile
+                      <User size={14} /> {t('nav.profile')}
                     </Link>
                     {user?.role === 'ADMIN' && (
                       <Link
@@ -181,7 +182,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                         onClick={() => setUserOpen(false)}
                         className="mx-1.5 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 transition-colors font-medium"
                       >
-                        <Settings size={14} /> Admin Panel
+                        <Settings size={14} /> {t('admin.title')}
                       </Link>
                     )}
                     <button
@@ -189,7 +190,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       onClick={() => void handleLogout()}
                       className="mx-1.5 w-[calc(100%-12px)] rounded-lg px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-2 transition-colors"
                     >
-                      <LogOut size={14} /> Sign out
+                      <LogOut size={14} /> {t('nav.signout')}
                     </button>
                   </div>
                 </>
@@ -198,10 +199,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
           ) : (
             <div className="flex items-center gap-2">
               <Link to="/login" className="hidden sm:inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-navy-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800 transition-all duration-200">
-                Log in
+                {t('nav.login')}
               </Link>
               <Link to="/signup" className="btn-primary !bg-[#17A398] !rounded-xl">
-                Sign up
+                {t('nav.signup')}
               </Link>
             </div>
           )}
@@ -219,7 +220,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       {/* Mobile nav */}
       {mobileOpen && (
         <div className="absolute left-0 right-0 top-16 border-b border-gray-100 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl px-4 py-3 shadow-elevated animate-fade-in sm:hidden">
-          {publicNav.map(n => (
+          {publicNavKeys.map((n: { to: string; labelKey: string }) => (
             <NavLink
               key={n.to}
               to={n.to}
@@ -227,13 +228,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
               onClick={() => setMobileOpen(false)}
               className="block rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-accent-600 transition-colors"
             >
-              {n.label}
+              {t(n.labelKey)}
             </NavLink>
           ))}
           {!isAuthenticated && (
             <div className="mt-2 flex flex-col gap-1 border-t border-gray-100 dark:border-slate-700 pt-2">
-              <Link to="/login" onClick={() => setMobileOpen(false)} className="block rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-accent-600 transition-colors">Log in</Link>
-              <Link to="/signup" onClick={() => setMobileOpen(false)} className="block rounded-xl px-4 py-2.5 text-sm font-semibold text-accent-600 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-900/30 transition-colors">Sign up</Link>
+              <Link to="/login" onClick={() => setMobileOpen(false)} className="block rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-accent-600 transition-colors">{t('nav.login')}</Link>
+              <Link to="/signup" onClick={() => setMobileOpen(false)} className="block rounded-xl px-4 py-2.5 text-sm font-semibold text-accent-600 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-900/30 transition-colors">{t('nav.signup')}</Link>
             </div>
           )}
         </div>
@@ -247,14 +248,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="flex h-screen bg-page dark:bg-page-dark">
         {/* Sidebar */}
         <aside className="hidden w-[268px] shrink-0 border-r border-white/80 dark:border-slate-700 bg-white/92 dark:bg-slate-900/92 backdrop-blur-xl lg:flex lg:flex-col">
-          <div className="flex h-16 items-center border-b border-slate-100 dark:border-slate-700 px-6">
-            <Link to="/" className="flex items-center">
-              <span className="text-lg font-bold tracking-tight text-navy-900 dark:text-white">
-                Hack<span className="text-accent-600">ET</span>
-              </span>
-            </Link>
-          </div>
-          <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5">
+          <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5 mt-4">
             {primaryNav.map(n => {
               const Icon = n.icon
               return (
@@ -366,10 +360,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <div className="fixed inset-0 z-50 lg:hidden">
               <div className="absolute inset-0 bg-black/25 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
               <aside className="absolute left-0 top-0 h-full w-[268px] border-r border-white/80 dark:border-slate-700 bg-white/96 dark:bg-slate-900 shadow-elevated animate-slide-in-left backdrop-blur-xl">
-                <div className="flex h-14 items-center justify-between border-b border-slate-100 dark:border-slate-700 px-4">
-                  <span className="text-sm font-bold text-navy-900 dark:text-white">
-                    Hack<span className="text-accent-600">ET</span>
-                  </span>
+                <div className="flex h-14 items-center justify-end border-b border-slate-100 dark:border-slate-700 px-4">
                   <button
                     type="button"
                     onClick={() => setMobileOpen(false)}

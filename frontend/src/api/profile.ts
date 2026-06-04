@@ -11,7 +11,7 @@ export interface ProfileWithHistory {
     interests?: string[]
     githubUrl?: string | null
     linkedinUrl?: string | null
-    preferredLocale?: string
+    preferredLocale?: 'en' | 'am'
     dateOfBirth?: string | null
     isSeekingTeam?: boolean
     mentorMaxDailyInteractions?: number | null
@@ -70,6 +70,7 @@ export interface ProfileUpdateData {
   city?: string | null
   region?: string | null
   isSeekingTeam?: boolean
+  preferredLocale?: 'en' | 'am'
 }
 
 export async function getMyProfile(): Promise<ProfileWithHistory> {
@@ -78,8 +79,8 @@ export async function getMyProfile(): Promise<ProfileWithHistory> {
 }
 
 export async function getPublicProfile(userId: string): Promise<PublicProfile> {
-  const response = await apiRequest<PublicProfile>(`/profile/${userId}`, { auth: true })
-  return response.data
+  const response = await apiRequest<{ user: PublicProfile }>(`/profile/${userId}`, { auth: true })
+  return response.data.user
 }
 
 export async function updateProfile(data: ProfileUpdateData): Promise<{ profile: UserProfile }> {

@@ -11,8 +11,12 @@ export type HackathonStatus =
 
 export interface Notification {
   id: string
+  type: string
+  title: string
   message: string
+  metadata?: Record<string, unknown>
   isRead: boolean
+  readAt?: string | null
   createdAt: string
 }
 
@@ -24,6 +28,8 @@ export interface UserProfile {
   city?: string | null
   region?: string | null
   skills?: string[]
+  preferredLocale?: 'en' | 'am'
+  preferredCalendar?: CalendarType
 }
 
 export interface User {
@@ -204,4 +210,27 @@ export interface LeaderboardEntry {
       name: string
     }
   }
+}
+
+export type CalendarType = 'GREGORIAN' | 'ETHIOPIAN'
+
+export interface ScheduleInfo {
+  gregorian: {
+    registrationStart: string
+    registrationEnd: string
+    eventStart: string
+    eventEnd: string
+    submissionDeadline: string
+    judgingStart?: string | null
+    judgingEnd?: string | null
+  }
+  ethiopian?: {
+    registrationStart: string
+    registrationEnd: string
+    eventStart: string
+    eventEnd: string
+    submissionDeadline: string
+    judgingStart?: string | null
+    judgingEnd?: string | null
+  } | null
 }

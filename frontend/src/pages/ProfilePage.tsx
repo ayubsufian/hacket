@@ -39,6 +39,8 @@ interface ExtendedUserProfile {
   githubUrl?: string | null
   linkedinUrl?: string | null
   isSeekingTeam?: boolean
+  preferredLocale?: 'en' | 'am'
+  preferredCalendar?: 'GREGORIAN' | 'ETHIOPIAN'
 }
 
 interface EditableFieldProps {
@@ -118,14 +120,17 @@ export default function ProfilePage() {
         
         if (isOwnProfile) {
           const data = await getMyProfile()
+          console.log('[Profile] Loaded my profile:', data)
           setProfile(data)
           setEditData(data.profile)
         } else {
           const data = await getPublicProfile(userId)
+          console.log('[Profile] Loaded public profile:', data)
           setProfile(data)
         }
       } catch (err: any) {
-        setError(err.message || 'Failed to load profile')
+        console.error('[Profile] Error loading profile:', err)
+        setError(err.message || err.payload?.message || 'Failed to load profile. Please check your connection and try again.')
       } finally {
         setLoading(false)
       }
@@ -165,6 +170,7 @@ export default function ProfilePage() {
         city: editData.city,
         region: editData.region,
         isSeekingTeam: editData.isSeekingTeam,
+        preferredLocale: editData.preferredLocale,
       })
       
       // Refresh profile data
@@ -246,18 +252,24 @@ export default function ProfilePage() {
   }
 
   if (error) {
+    const isConnectionError = error.toLowerCase().includes('unable to connect') || error.toLowerCase().includes('connection') || error.toLowerCase().includes('offline')
     return (
       <div className="max-w-3xl mx-auto">
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
           <AlertCircle className="text-red-400 mb-4" size={48} />
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Failed to Load Profile</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="btn-primary"
-          >
-            Try Again
-          </button>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{error}</p>
+          {isConnectionError && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-6">Make sure the backend server is running on http://localhost:5000</p>
+          )}
+          <div className="flex gap-3">
+            <button 
+              onClick={() => window.location.reload()} 
+              className="btn-primary"
+            >
+              Reload Page
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -527,6 +539,41 @@ export default function ProfilePage() {
                   icon={<GraduationCap size={16} />}
                 />
               )}
+            </div>
+          )}
+
+          {/* Preferences */}
+          {isEditing && (
+            <div className="card-elevated">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <Globe size={16} /> Preferences
+              </h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Language</label>
+                  <select
+                    name="preferredLocale"
+                    value={editData.preferredLocale || 'en'}
+                    onChange={(e) => handleFieldChange('preferredLocale', e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+                  >
+                    <option value="en">English</option>
+                    <option value="am">Amharic</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1">Calendar</label>
+                  <select
+                    name="preferredCalendar"
+                    value={editData.preferredCalendar || 'GREGORIAN'}
+                    onChange={(e) => handleFieldChange('preferredCalendar', e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+                  >
+                    <option value="GREGORIAN">Gregorian</option>
+                    <option value="ETHIOPIAN">Ethiopian</option>
+                  </select>
+                </div>
+              </div>
             </div>
           )}
 

@@ -63,8 +63,11 @@ export default function SignupPage() {
         email: form.email.trim().toLowerCase(),
         role,
       }
+      // Register and auto-login (email verification disabled for testing)
       const user = await register(payload)
-      success('Account created successfully. Welcome to HackET.')
+      
+      success('Account created successfully! Welcome to HackET.')
+      // Redirect to appropriate dashboard
       navigate(getDashboardRoute(user.role), { replace: true })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Registration failed'

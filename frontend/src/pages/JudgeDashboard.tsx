@@ -118,18 +118,18 @@ function JudgeDashboardInner() {
 
     if (!isAuthenticated || (user?.role !== 'JUDGE' && user?.role !== 'MENTOR' && user?.role !== 'ADMIN')) return (
         <div className="py-20 text-center">
-            <h1 className="text-lg font-semibold text-gray-900">Judging</h1>
-            <p className="mt-1 text-sm text-gray-500">Judges, mentors, and admins only.</p>
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Judging</h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Judges, mentors, and admins only.</p>
             <Link to="/login" className="btn-primary mt-4 inline-block">Log in</Link>
         </div>
     )
 
     if (error) return (
         <div className="max-w-5xl mx-auto">
-            <div className="alert-error flex flex-col items-center justify-center py-12 px-4 text-center bg-white border border-red-100 rounded-xl shadow-sm">
+            <div className="alert-error flex flex-col items-center justify-center py-12 px-4 text-center bg-white dark:bg-slate-800 border border-red-100 dark:border-red-900/30 rounded-xl shadow-sm">
                 <Globe className="text-red-400 mb-3" size={32} />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Systems Offline</h3>
-                <p className="text-sm text-gray-500 max-w-sm mb-6">{error}</p>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Systems Offline</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mb-6">{error}</p>
                 <button onClick={() => window.location.reload()} className="btn-primary shadow-red-500/20 from-red-500 to-red-600">Retry Connection</button>
             </div>
         </div>
@@ -148,7 +148,7 @@ function JudgeDashboardInner() {
                 </div>
                 <div className="flex flex-col gap-2 items-end">
                     {isSoloDev && (
-                        <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">
+                        <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-full px-3 py-1">
                             <AlertTriangle size={12} /> Admin override — all submissions visible
                         </span>
                     )}
@@ -167,9 +167,9 @@ function JudgeDashboardInner() {
             {criteria?.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                     {criteria?.map(c => (
-                        <span key={c.id} className="flex items-center gap-1.5 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full px-3 py-1">
+                        <span key={c.id} className="flex items-center gap-1.5 text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800 rounded-full px-3 py-1">
                             <Star size={11} /> {c.name}
-                            <span className="text-indigo-400 font-normal">×{c.weight} / {c.maxScore}pts</span>
+                            <span className="text-indigo-400 dark:text-indigo-500 font-normal">×{c.weight} / {c.maxScore}pts</span>
                         </span>
                     ))}
                 </div>
@@ -184,9 +184,9 @@ function JudgeDashboardInner() {
                     </div>
                     <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
                         {loading || loadingSubs
-                            ? <div className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto mb-2" /></div>
+                            ? <div className="p-8 text-center text-gray-400 dark:text-gray-500"><Loader2 className="animate-spin mx-auto mb-2" /></div>
                             : submissions?.length === 0
-                                ? <div className="p-8 text-center text-sm text-gray-500">No submissions available for judging yet.</div>
+                                ? <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">No submissions available for judging yet.</div>
                                 : submissions?.map(sub => {
                                     const isSelected = selectedSub?.id === sub.id
                                     return (

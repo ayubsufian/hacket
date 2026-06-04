@@ -5,5 +5,9 @@
     "frontend",
     "apps/*",
     "packages/database"
-  ]
+  ],
+  "scripts": {
+    "db:seed": "npm run seed --workspace=packages/database",
+    "db:reset": "npm run db:reset --workspace=packages/database"
+  }
 }

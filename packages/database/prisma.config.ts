@@ -10,6 +10,7 @@ export default defineConfig({
     seed: "node ../../apps/backend/src/config/seed.js",
   },
   datasource: {
+    provider: "postgresql",
     url: process.env["DATABASE_URL"],
   },
 });

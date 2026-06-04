@@ -168,8 +168,8 @@ export default function TeamsPage() {
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Teams</h1>
-          <p className="text-sm text-gray-500">Manage your squad or join a new one.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Teams</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Manage your squad or join a new one.</p>
         </div>
         {!team && !showCreate && (
           <button onClick={() => setShowCreate(true)} className="btn-primary">
@@ -189,9 +189,9 @@ export default function TeamsPage() {
             {invitations?.map((invitation) => (
               <div key={invitation.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-200">
                 <div>
-                  <p className="font-medium text-gray-900">Team Invitation</p>
-                  <p className="text-sm text-gray-600">Expires: {new Date(invitation.expiresAt).toLocaleDateString()}</p>
-                  {invitation.message && <p className="text-sm text-gray-500 mt-1">"{invitation.message}"</p>}
+                  <p className="font-medium text-gray-900 dark:text-gray-200">Team Invitation</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Expires: {new Date(invitation.expiresAt).toLocaleDateString()}</p>
+                  {invitation.message && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">"{invitation.message}"</p>}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -218,8 +218,8 @@ export default function TeamsPage() {
           {showCreate && (
             <div className="card-elevated p-8 border border-accent-100 bg-gradient-to-b from-white to-gray-50/50 animate-slide-in-left">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-lg font-bold text-gray-900">Create a new team</h2>
-                <button onClick={() => setShowCreate(false)} className="text-sm font-medium text-gray-500 hover:text-gray-900">Cancel</button>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Create a new team</h2>
+                <button onClick={() => setShowCreate(false)} className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">Cancel</button>
               </div>
               <form onSubmit={handleCreate} className="space-y-4">
                 <div>
@@ -290,8 +290,8 @@ export default function TeamsPage() {
 
             {searchedTeam && (
               <div className="mt-6 rounded-xl border border-accent-200 bg-accent-50 p-4">
-                <p className="font-semibold text-gray-900">{searchedTeam.name}</p>
-                <p className="text-sm text-gray-600 mb-3">{searchedTeam.members?.length || 1} members</p>
+                <p className="font-semibold text-gray-900 dark:text-gray-200">{searchedTeam.name}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{searchedTeam.members?.length || 1} members</p>
                 <button 
                   onClick={async () => { 
                     await respondToInvitation(searchedTeam.id, true); 
@@ -311,8 +311,8 @@ export default function TeamsPage() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="section-title text-accent-600">Your Team</p>
-                <h2 className="text-2xl font-bold text-gray-900">{team.name}</h2>
-                {team.description && <p className="text-sm text-gray-600 mt-1">{team.description}</p>}
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{team.name}</h2>
+                {team.description && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{team.description}</p>}
               </div>
               <div className="flex gap-2">
                 {team.members?.find(m => m.userId === user?.id)?.role === 'leader' && (
@@ -337,8 +337,8 @@ export default function TeamsPage() {
           {showInvite && (
             <div className="card-elevated p-6 border border-blue-100 bg-blue-50">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-gray-900">Invite Team Member</h3>
-                <button onClick={() => setShowInvite(false)} className="text-gray-500 hover:text-gray-900">
+                <h3 className="font-semibold text-gray-900 dark:text-white">Invite Team Member</h3>
+                <button onClick={() => setShowInvite(false)} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">
                   <X size={20} />
                 </button>
               </div>
@@ -378,7 +378,7 @@ export default function TeamsPage() {
 
           <div className="card-elevated p-6 bg-white overflow-hidden">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-semibold text-gray-900">Members ({team.members?.length || 0})</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Members ({team.members?.length || 0})</h3>
               {team.neededSkills && team.neededSkills.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {team.neededSkills.map((skill, index) => (

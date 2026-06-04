@@ -115,10 +115,10 @@ export default function SubmissionsPage() {
                 <p className="mt-2 text-sm leading-relaxed text-slate-500">Draft, update, and finalize your hackathon project submission from the currently active team workspace.</p>
             </div>
 
-            <div className="card-elevated border border-gray-100 bg-white p-8 text-center">
+            <div className="card-elevated border border-gray-100 dark:border-gray-700 bg-white dark:bg-slate-800 p-8 text-center">
                 <Users size={36} className="mx-auto mb-4 text-accent-500" />
-                <h2 className="text-lg font-semibold text-gray-900">No active team workspace</h2>
-                <p className="mt-2 text-sm text-gray-500">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">No active team workspace</h2>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                     Create or connect to a team first. Your submission is tied to your active team workspace.
                 </p>
                 <Link to="/teams" className="btn-primary mt-6 inline-flex">Open Teams</Link>

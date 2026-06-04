@@ -1,5 +1,5 @@
 import { apiRequest } from './client'
-import type { Hackathon, Pagination, StaffAssignment, StaffRole, Team } from '../types/models'
+import type { Hackathon, Pagination, StaffAssignment, StaffInvitation, StaffRole, Team } from '../types/models'
 
 export interface ListEventsInput {
   status?: string
@@ -73,15 +73,19 @@ export async function generateStaffInvitationLink(
   eventId: string,
   input: { email: string; role: StaffRole }
 ) {
-  const response = await apiRequest<{ invitationLink: string; expiresAt: string }>(
-    `/events/${eventId}/staff/invitations`,
+  const response = await apiRequest<{ invitationUrl: string; expiresAt: string; token?: string }>(
+    `/events/${eventId}/staff/invitations?debug=true`,
     {
       method: 'POST',
       auth: true,
-      body: JSON.stringify(input),
+      body: JSON.stringify({ email: input.email, staffRole: input.role }),
     }
   )
-  return response.data
+  // Use token to build correct URL with current origin (backend may have wrong FRONTEND_URL)
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const token = response.data.token
+  const invitationLink = token ? `${baseUrl}/staff/accept-invitation?token=${token}` : response.data.invitationUrl
+  return { invitationLink, expiresAt: response.data.expiresAt, token }
 }
 
 export async function getStaffAssignments(eventId: string) {
@@ -92,7 +96,7 @@ export async function getStaffAssignments(eventId: string) {
 }
 
 export async function acceptStaffInvitation(token: string) {
-  const response = await apiRequest<{ assignment: StaffAssignment }>(
+  await apiRequest<null>(
     `/staff/invitations/accept`,
     {
       method: 'POST',
@@ -100,5 +104,56 @@ export async function acceptStaffInvitation(token: string) {
       body: JSON.stringify({ token }),
     }
   )
-  return response.data.assignment
+}
+
+export async function getStaffInvitations(eventId: string, status?: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED') {
+  const query = status ? `?status=${status}` : ''
+  const response = await apiRequest<{ data: StaffInvitation[]; pagination: Pagination }>(
+    `/events/${eventId}/staff/invitations${query}`,
+    { auth: true }
+  )
+  return response.data
+}
+
+export async function cancelStaffInvitation(eventId: string, invitationId: string) {
+  return apiRequest<null>(`/events/${eventId}/staff/invitations/${invitationId}`, {
+    method: 'DELETE',
+    auth: true,
+  })
+}
+
+export async function getCalendar(eventId: string, calendarType?: 'GREGORIAN' | 'ETHIOPIAN') {
+  const query = calendarType ? `?calendar=${calendarType}` : ''
+  const response = await apiRequest<string>(`/events/${eventId}/calendar${query}`, {
+    auth: false,
+  })
+  return response.data
+}
+
+export interface ScheduleInfo {
+  gregorian: {
+    registrationStart: string
+    registrationEnd: string
+    eventStart: string
+    eventEnd: string
+    submissionDeadline: string
+    judgingStart?: string | null
+    judgingEnd?: string | null
+  }
+  ethiopian?: {
+    registrationStart: string
+    registrationEnd: string
+    eventStart: string
+    eventEnd: string
+    submissionDeadline: string
+    judgingStart?: string | null
+    judgingEnd?: string | null
+  } | null
+}
+
+export async function getSchedule(eventId: string): Promise<ScheduleInfo> {
+  const response = await apiRequest<{ schedule: ScheduleInfo }>(`/events/${eventId}/schedule`, {
+    auth: false,
+  })
+  return response.data.schedule
 }

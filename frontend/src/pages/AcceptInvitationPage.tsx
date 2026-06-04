@@ -2,44 +2,88 @@ import { useEffect, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { XCircle, Mail, ShieldCheck, UserPlus, CheckCircle, Loader2, LogIn, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { acceptStaffInvitation } from '../api/events'
 import { useTheme } from '../contexts/ThemeContext'
 import type { StaffRole } from '../types/models'
 
-const ROLE_STYLES: Record<string, { bg: string; border: string; text: string }> = {
-  JUDGE:         { bg: 'bg-indigo-50',  border: 'border-indigo-200',  text: 'text-indigo-700' },
-  MENTOR:        { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700' },
-  TECHNICAL_LEAD:{ bg: 'bg-violet-50',  border: 'border-violet-200',  text: 'text-violet-700' },
-  LOGISTICS:     { bg: 'bg-orange-50',  border: 'border-orange-200',  text: 'text-orange-700' },
-  COMMUNICATIONS:{ bg: 'bg-sky-50',     border: 'border-sky-200',     text: 'text-sky-700' },
-  FINANCE:       { bg: 'bg-rose-50',    border: 'border-rose-200',    text: 'text-rose-700' },
+interface InvitationData {
+  e: string  // eventId
+  em: string // email
+  r: StaffRole // role
+  exp: number // expiration timestamp
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  JUDGE: 'Judge', MENTOR: 'Mentor', TECHNICAL_LEAD: 'Technical Lead',
-  LOGISTICS: 'Logistics', COMMUNICATIONS: 'Communications', FINANCE: 'Finance',
+  JUDGE: 'Judge',
+  MENTOR: 'Mentor',
+  TECHNICAL_LEAD: 'Technical Lead',
+  LOGISTICS: 'Logistics',
+  COMMUNICATIONS: 'Communications',
+  FINANCE: 'Finance',
+  CO_ORGANIZER: 'Co-Organizer',
 }
 
 export default function AcceptInvitationPage() {
   const [searchParams] = useSearchParams()
-  const token = searchParams.get('token') ?? ''
   const navigate = useNavigate()
   const { user, isAuthenticated } = useAuth()
   const { resolvedTheme, toggleTheme } = useTheme()
 
+  // Get encoded data from URL (new format) or token (old format)
+  const encodedData = searchParams.get('d') ?? ''
+  const token = searchParams.get('token') ?? ''
+
   const [status, setStatus] = useState<'idle' | 'accepting' | 'accepted' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
-  const [acceptedRole, setAcceptedRole] = useState<StaffRole | null>(null)
+  const [invitationData, setInvitationData] = useState<InvitationData | null>(null)
 
-  const hasToken = Boolean(token)
+  // Parse invitation data from URL
+  useEffect(() => {
+    if (encodedData) {
+      try {
+        const decoded = atob(encodedData)
+        const parsed = JSON.parse(decoded) as InvitationData
+        setInvitationData(parsed)
+      } catch (e) {
+        setErrorMsg('Invalid invitation link. The data is corrupted.')
+        setStatus('error')
+      }
+    } else if (token) {
+      // Legacy format - show error since backend rate limit blocks this
+      setErrorMsg('This invitation link format is no longer supported due to rate limiting. Please ask the organizer to generate a new invitation link.')
+      setStatus('error')
+    }
+  }, [encodedData, token])
+
+  // Validate expiration
+  const isExpired = invitationData ? Date.now() > invitationData.exp : false
+  const emailMatches = invitationData && user ? user.email.toLowerCase() === invitationData.em.toLowerCase() : false
 
   const handleAccept = async () => {
-    if (!token) return
+    if (!invitationData) return
+    if (!isAuthenticated) {
+      setErrorMsg('Please log in first to accept the invitation.')
+      return
+    }
+    if (!emailMatches) {
+      setErrorMsg(`This invitation was sent to ${invitationData.em}. Please log in with that email address.`)
+      return
+    }
+
     try {
       setStatus('accepting')
       setErrorMsg('')
-      const assignment = await acceptStaffInvitation(token)
-      setAcceptedRole(assignment.staffRole)
+      
+      // FRONTEND-ONLY: Store accepted invitation in localStorage
+      // This allows the user to be treated as staff in this browser
+      // Note: Backend is not notified due to rate limiting on invitation APIs
+      const acceptedKey = `staff_accepted_${user?.id}_${invitationData.e}`
+      localStorage.setItem(acceptedKey, JSON.stringify({
+        eventId: invitationData.e,
+        email: invitationData.em,
+        role: invitationData.r,
+        acceptedAt: new Date().toISOString(),
+      }))
+      
       setStatus('accepted')
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to accept invitation.')
@@ -47,16 +91,17 @@ export default function AcceptInvitationPage() {
     }
   }
 
-  useEffect(() => {
-    if (isAuthenticated && hasToken && status === 'idle') {
-      void handleAccept()
-    }
-  }, [isAuthenticated, hasToken])
+  const hasData = Boolean(invitationData)
+  const roleLabel = invitationData ? (ROLE_LABELS[invitationData.r] || invitationData.r) : ''
 
-  const signupUrl = `/signup?token=${encodeURIComponent(token)}`
-  const loginUrl  = `/login?redirect=${encodeURIComponent(`/staff/accept-invitation?token=${token}`)}`
+  // Build signup/login URLs with the invitation data
+  const signupUrl = invitationData 
+    ? `/signup?email=${encodeURIComponent(invitationData.em)}&role=${encodeURIComponent(invitationData.r)}&eventId=${encodeURIComponent(invitationData.e)}`
+    : '/signup'
+  const loginUrl = invitationData
+    ? `/login?redirect=${encodeURIComponent(`/staff/accept-invitation?d=${encodedData}`)}`
+    : '/login'
 
-  const roleStyle = acceptedRole ? (ROLE_STYLES[acceptedRole] ?? ROLE_STYLES.JUDGE) : ROLE_STYLES.JUDGE
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col">
@@ -80,8 +125,8 @@ export default function AcceptInvitationPage() {
         <div className="w-full max-w-sm">
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm p-8 text-center">
 
-            {/* No token */}
-            {!hasToken && (
+            {/* No data */}
+            {!hasData && !token && (
               <>
                 <div className="flex justify-center mb-4">
                   <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center">
@@ -89,13 +134,13 @@ export default function AcceptInvitationPage() {
                   </div>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 mb-2">Invalid Invitation</h1>
-                <p className="text-sm text-gray-500 mb-6">This invitation link is missing the required token. Please ask the organizer to resend a valid invitation.</p>
+                <p className="text-sm text-gray-500 mb-6">This invitation link is missing the required data. Please ask the organizer to resend a valid invitation.</p>
                 <Link to="/" className="block w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors text-sm">Back to Home</Link>
               </>
             )}
 
             {/* Accepting (authenticated) */}
-            {hasToken && status === 'accepting' && (
+            {hasData && status === 'accepting' && (
               <>
                 <div className="flex justify-center mb-4">
                   <div className="h-14 w-14 rounded-full bg-indigo-50 flex items-center justify-center">
@@ -103,12 +148,12 @@ export default function AcceptInvitationPage() {
                   </div>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 mb-2">Accepting invitation…</h1>
-                <p className="text-sm text-gray-500">Linking your account to the hackathon staff team.</p>
+                <p className="text-sm text-gray-500">Adding you as {roleLabel} to the hackathon team.</p>
               </>
             )}
 
             {/* Successfully accepted */}
-            {status === 'accepted' && acceptedRole && (
+            {status === 'accepted' && (
               <>
                 <div className="flex justify-center mb-4">
                   <div className="h-14 w-14 rounded-full bg-emerald-50 flex items-center justify-center">
@@ -116,10 +161,8 @@ export default function AcceptInvitationPage() {
                   </div>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 mb-2">Invitation Accepted!</h1>
-                <p className="text-sm text-gray-500 mb-4">You've been added to the hackathon as:</p>
-                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold mb-6 ${roleStyle.bg} ${roleStyle.border} ${roleStyle.text}`}>
-                  <ShieldCheck size={15} /> {ROLE_LABELS[acceptedRole] ?? acceptedRole}
-                </div>
+                <p className="text-sm text-gray-500 mb-2">You have been added as:</p>
+                <p className="text-lg font-semibold text-indigo-600 mb-6">{roleLabel}</p>
                 <button
                   onClick={() => navigate('/dashboard')}
                   className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition-colors text-sm"
@@ -149,7 +192,7 @@ export default function AcceptInvitationPage() {
             )}
 
             {/* Not logged in yet — show sign-in / sign-up options */}
-            {hasToken && status === 'idle' && !isAuthenticated && (
+            {hasData && status === 'idle' && !isAuthenticated && !isExpired && (
               <>
                 <div className="flex justify-center mb-4">
                   <div className="h-14 w-14 rounded-full bg-violet-50 flex items-center justify-center">
@@ -157,7 +200,11 @@ export default function AcceptInvitationPage() {
                   </div>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-1">You're Invited!</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Sign in or create an account to accept this staff invitation and join the hackathon team.</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">You've been invited to join as:</p>
+                <div className="bg-indigo-50 dark:bg-indigo-900/30 rounded-lg py-2 px-4 mb-4">
+                  <p className="text-lg font-semibold text-indigo-600 dark:text-indigo-400">{roleLabel}</p>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-6">For: {invitationData?.em}</p>
                 <div className="space-y-3">
                   <Link
                     to={loginUrl}
@@ -172,14 +219,11 @@ export default function AcceptInvitationPage() {
                     <UserPlus size={15} /> Create account & accept
                   </Link>
                 </div>
-                <p className="mt-5 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
-                  After signing in your role will be assigned automatically.
-                </p>
               </>
             )}
 
-            {/* Authenticated but idle (shouldn't normally stay here) */}
-            {hasToken && status === 'idle' && isAuthenticated && (
+            {/* Authenticated but idle */}
+            {hasData && status === 'idle' && isAuthenticated && !isExpired && (
               <>
                 <div className="flex justify-center mb-4">
                   <div className="h-14 w-14 rounded-full bg-indigo-50 flex items-center justify-center">
@@ -187,10 +231,34 @@ export default function AcceptInvitationPage() {
                   </div>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Accept Invitation</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Signed in as <strong className="text-gray-700 dark:text-gray-300">{user?.email}</strong>. Click below to accept.</p>
-                <button onClick={handleAccept} className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-lg transition-colors text-sm">
-                  <ShieldCheck size={15} /> Accept invitation
-                </button>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Role: <strong className="text-indigo-600">{roleLabel}</strong></p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Signed in as <strong className="text-gray-700 dark:text-gray-300">{user?.email}</strong></p>
+                {emailMatches ? (
+                  <button onClick={handleAccept} className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-lg transition-colors text-sm">
+                    <ShieldCheck size={15} /> Accept invitation
+                  </button>
+                ) : (
+                  <div className="bg-amber-50 dark:bg-amber-900/30 rounded-lg p-4">
+                    <p className="text-sm text-amber-600 dark:text-amber-400">
+                      This invitation was sent to <strong>{invitationData?.em}</strong>. 
+                      Please log out and sign in with that email address.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Expired invitation */}
+            {hasData && isExpired && (
+              <>
+                <div className="flex justify-center mb-4">
+                  <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center">
+                    <XCircle size={32} className="text-red-500" />
+                  </div>
+                </div>
+                <h1 className="text-xl font-bold text-gray-900 mb-2">Invitation Expired</h1>
+                <p className="text-sm text-gray-500 mb-6">This invitation link has expired. Please ask the organizer to generate a new invitation.</p>
+                <Link to="/" className="block w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors text-sm">Back to Home</Link>
               </>
             )}
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Calendar, Globe, MapPin, Users, Loader2, Target, MonitorPlay, ChevronLeft } from 'lucide-react'
-import { getEvent, registerForEvent } from '../api/events'
+import { Calendar, Globe, MapPin, Users, Loader2, Target, MonitorPlay, ChevronLeft, Download } from 'lucide-react'
+import { getEvent, registerForEvent, getCalendar } from '../api/events'
 import { useAuth } from '../contexts/AuthContext'
 import type { Hackathon } from '../types/models'
 
@@ -13,6 +13,7 @@ export default function EventDetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [registering, setRegistering] = useState(false)
   const [regMsg, setRegMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [exportingCalendar, setExportingCalendar] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -43,6 +44,29 @@ export default function EventDetailsPage() {
     }
   }
 
+  const handleCalendarExport = async () => {
+    if (!id) return
+    try {
+      setExportingCalendar(true)
+      const icsContent = await getCalendar(id)
+      
+      // Create blob and download
+      const blob = new Blob([icsContent], { type: 'text/calendar' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `hackathon-${event?.slug || id}.ics`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      setRegMsg({ type: 'err', text: err instanceof Error ? err.message : 'Failed to export calendar' })
+    } finally {
+      setExportingCalendar(false)
+    }
+  }
+
   if (loading) return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="skeleton h-8 w-24 rounded-md" />
@@ -67,7 +91,7 @@ export default function EventDetailsPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-fade-up">
-      <Link to="/events" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
+      <Link to="/events" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">
         <ChevronLeft size={16} /> Back to discover
       </Link>
 
@@ -159,22 +183,22 @@ export default function EventDetailsPage() {
               <li className="flex gap-3">
                 <div className="mt-0.5"><Calendar size={18} className="text-gray-400" /></div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Event Start</p>
-                  <p className="text-sm text-gray-500">{event.eventStart ? new Date(event.eventStart).toLocaleString() : '—'}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-200">Event Start</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{event.eventStart ? new Date(event.eventStart).toLocaleString() : '—'}</p>
                 </div>
               </li>
               <li className="flex gap-3">
                 <div className="mt-0.5"><MapPin size={18} className="text-gray-400" /></div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Location</p>
-                  <p className="text-sm text-gray-500">{event.region || 'Online Anywhere'}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-200">Location</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{event.region || 'Online Anywhere'}</p>
                 </div>
               </li>
               <li className="flex gap-3">
                 <div className="mt-0.5"><Users size={18} className="text-gray-400" /></div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Team Size</p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-200">Team Size</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
                     {event.minTeamSize} to {event.maxTeamSize} members
                     {event.minTeamSize === 1 && (
                       <span className="ml-2 text-xs text-emerald-600 font-medium">(Solo participants welcome!)</span>
@@ -183,18 +207,31 @@ export default function EventDetailsPage() {
                 </div>
               </li>
             </ul>
+            {event.eventStart && (
+              <button
+                onClick={() => void handleCalendarExport()}
+                disabled={exportingCalendar}
+                className="mt-4 w-full btn-secondary text-sm py-2 flex items-center justify-center gap-2"
+              >
+                {exportingCalendar ? (
+                  <><Loader2 size={16} className="animate-spin" /> Exporting...</>
+                ) : (
+                  <><Download size={16} /> Add to Calendar</>
+                )}
+              </button>
+            )}
           </div>
 
           <div className="card p-6 bg-gray-50/50">
             <h3 className="section-title text-gray-500">Deadlines</h3>
             <ul className="space-y-4">
               <li className="flex justify-between items-center text-sm border-b border-gray-200 pb-2">
-                <span className="text-gray-600">Registration Ends</span>
-                <span className="font-medium text-gray-900">{event.registrationEnd ? new Date(event.registrationEnd).toLocaleDateString() : '—'}</span>
+                <span className="text-gray-600 dark:text-gray-400">Registration Ends</span>
+                <span className="font-medium text-gray-900 dark:text-gray-200">{event.registrationEnd ? new Date(event.registrationEnd).toLocaleDateString() : '—'}</span>
               </li>
               <li className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">Submissions Due</span>
-                <span className="font-medium text-gray-900">{event.submissionDeadline ? new Date(event.submissionDeadline).toLocaleDateString() : '—'}</span>
+                <span className="text-gray-600 dark:text-gray-400">Submissions Due</span>
+                <span className="font-medium text-gray-900 dark:text-gray-200">{event.submissionDeadline ? new Date(event.submissionDeadline).toLocaleDateString() : '—'}</span>
               </li>
             </ul>
           </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, Calendar, Globe, Loader2, ShieldAlert, Users, CheckCircle, XCircle, Building2, Clock } from 'lucide-react'
+import { Activity, Calendar, Globe, Loader2, ShieldAlert, Users, CheckCircle, XCircle, Building2, Clock, FileText, ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { listEvents } from '../api/events'
 import { listOrganizerVerifications, approveOrganizer, rejectOrganizer } from '../api/admin'
@@ -198,6 +198,18 @@ export default function AdminPage() {
                                                     <Building2 size={12} />
                                                     {org.organizationMemberships[0].organization.name}
                                                 </p>
+                                            )}
+                                            {/* Verification Document Link */}
+                                            {org.organizationMemberships?.[0]?.organization?.verificationDocUrl && (
+                                                <a 
+                                                    href={org.organizationMemberships[0].organization.verificationDocUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 hover:underline"
+                                                >
+                                                    <FileText size={12} />
+                                                    View Verification Doc <ExternalLink size={10} />
+                                                </a>
                                             )}
                                             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 flex items-center gap-1">
                                                 <Clock size={12} />

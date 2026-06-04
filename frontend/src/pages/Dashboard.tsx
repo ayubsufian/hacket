@@ -124,7 +124,7 @@ export default function Dashboard() {
                       <p className="font-medium text-gray-900 dark:text-gray-200 group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors">{ev.title}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{ev.eventStart ? new Date(ev.eventStart).toLocaleDateString() : '—'}</p>
                     </div>
-                    <ChevronRight size={16} className="text-gray-300 group-hover:text-accent-500 group-hover:translate-x-1 transition-all" />
+                    <ChevronRight size={16} className="text-gray-300 dark:text-gray-600 group-hover:text-accent-500 group-hover:translate-x-1 transition-all" />
                   </Link>
                 ))}
               </div>

@@ -21,6 +21,7 @@ import ProfilePage from './pages/ProfilePage'
 import AdminPage from './pages/AdminPage'
 import OrganizerDashboard from './pages/OrganizerDashboard'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import VerifyEmailPage from './pages/VerifyEmailPage'
 import AcceptInvitationPage from './pages/AcceptInvitationPage'
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route path="/staff/accept-invitation" element={<AcceptInvitationPage />} />
               <Route path="/events" element={<EventsPage />} />
               <Route path="/events/:id" element={<EventDetailsPage />} />
